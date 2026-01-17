@@ -1,0 +1,153 @@
+syntax = "proto3";
+
+package proto;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "grapthway/pkg/proto";
+
+enum TransactionType {
+  TRANSFER = 0;
+  DEBIT = 1;
+  REWARD = 2;
+  GENESIS = 3;
+  STAKE_DEPOSIT = 4;
+  STAKE_WITHDRAWAL = 5;
+  STAKE_ASSIGN = 6;
+  STAKE_UNASSIGN = 7;
+  BATCH_AGGREGATION = 8;
+  SET_ALLOWANCE = 9;
+  REMOVE_ALLOWANCE = 10;
+  DELEGATED_TRANSFER = 11;
+  ROLLBACK_DEBIT = 12;
+  ROLLBACK_CREDIT = 13;
+  // Token transaction types
+  TOKEN_CREATE = 14;
+  TOKEN_TRANSFER = 15;
+  TOKEN_MINT = 16;
+  TOKEN_BURN = 17;
+  TOKEN_APPROVE = 18;
+  TOKEN_REVOKE = 19;
+  TOKEN_LOCK = 20;
+  // Token config transaction types
+  TOKEN_CONFIG_BURN = 21;
+  TOKEN_CONFIG_MINT = 22;
+}
+
+message BatchAggregationPayload {
+  map<string, uint64> debits = 1;
+  map<string, uint64> rewards = 2;
+  repeated string aggregated_tx_ids = 3;
+}
+
+message Transaction {
+  string id = 1;
+  TransactionType type = 2;
+  string from = 3;
+  string to = 4;
+  uint64 amount = 5;
+  uint64 nonce = 6;
+  google.protobuf.Timestamp timestamp = 7;
+  google.protobuf.Timestamp created_at = 8;
+  string target_node_id = 9;
+  BatchAggregationPayload batch_payload = 10;
+  string spender = 11;
+  uint64 allowance_limit = 12;
+  // Token-specific fields
+  string token_address = 13;
+  TokenMetadata token_metadata = 14;
+}
+
+message PreValidationVote {
+    string tx_id = 1;
+    string validator_id = 2;
+    bytes validator_sig = 3;
+}
+
+message NonceUpdate {
+    string address = 1;
+    uint64 new_pending_nonce = 2;
+}
+
+message StakeAllocation {
+  string node_peer_id = 1;
+  uint64 amount = 2;
+  google.protobuf.Timestamp locked_at = 3;
+}
+
+message UnbondingStake {
+  uint64 amount = 1;
+  google.protobuf.Timestamp unlock_time = 2;
+}
+
+message StakeInfo {
+  uint64 total_stake = 1;
+  repeated StakeAllocation allocations = 2;
+  repeated UnbondingStake unbonding = 3;
+}
+
+message AccountState {
+  string address = 1;
+  uint64 balance = 2;
+  uint64 nonce = 3;
+  uint64 pending_nonce = 4;
+  uint64 pending_spend = 5;
+  StakeInfo stake_info = 6;
+  map<string, uint64> allowances = 7;
+}
+
+message TransactionList {
+    repeated Transaction transactions = 1;
+}
+
+message TokenMetadata {
+  string name = 1;
+  string ticker = 2;
+  uint32 decimals = 3;
+  uint64 initial_supply = 4;
+  string token_type = 5;
+  BurnConfig burn_config = 6;
+  MintConfig mint_config = 7;
+  string metadata = 8;
+}
+
+message BurnConfig {
+  bool enabled = 1;
+  double burn_rate_per_tx = 2;
+  bool manual_burn = 3;
+}
+
+message MintConfig {
+  bool enabled = 1;
+  double mint_rate_per_tx = 2;
+  bool manual_mint = 3;
+}
+
+message TokenState {
+  string address = 1;
+  string name = 2;
+  string ticker = 3;
+  uint32 decimals = 4;
+  uint64 total_supply = 5;
+  string creator = 6;
+  google.protobuf.Timestamp created_at = 7;
+  bool config_locked = 8;
+  uint64 initial_supply = 9;
+  string token_type = 10;
+  BurnConfig burn_config = 11;
+  MintConfig mint_config = 12;
+  string metadata = 13;
+}
+
+message TokenBalance {
+  string token_address = 1;
+  string owner = 2;
+  uint64 balance = 3;
+}
+
+message TokenAllowance {
+  string token_address = 1;
+  string owner = 2;
+  string spender = 3;
+  uint64 amount = 4;
+}

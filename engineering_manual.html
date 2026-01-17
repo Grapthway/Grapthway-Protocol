@@ -1,0 +1,1880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grapthway Protocol :: Unified Engineering Manual</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+    <style>
+        :root {
+            --primary: #3b82f6; /* blue-500 */
+            --secondary: #10b981; /* green-500 */
+            --dark: #111827; /* gray-900 */
+            --light: #f9fafb; /* gray-50 */
+            --gray: #4b5563; /* gray-600 */
+            --danger: #ef4444;
+            --warning: #f59e0b;
+        }
+        html { scroll-behavior: smooth; }
+        body { font-family: 'Inter', sans-serif; background-color: var(--light); color: var(--gray); }
+        .nav-link.active {
+            border-left: 4px solid var(--primary);
+            color: var(--primary);
+            background-color: rgba(59, 130, 246, 0.05);
+            font-weight: 600;
+        }
+        .nav-link { transition: all 0.2s ease-in-out; }
+        pre {
+            border-radius: 8px;
+            overflow-x: auto;
+            padding: 1.5rem;
+            background-color: #1e293b; /* slate-800 */
+            color: #f8fafc; /* slate-50 */
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+        }
+        .code-block { position: relative; }
+        .copy-btn {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background-color: #334155; /* slate-700 */
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 12px;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: all 0.3s;
+            font-size: 0.875rem;
+        }
+        .copy-btn:hover { opacity: 1; background-color: #475569; }
+        .section-title {
+             border-bottom: 2px solid #e5e7eb;
+             padding-bottom: 0.75rem;
+        }
+        .diagram-container { 
+            background: white; 
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        }
+        .tip-box {
+            background-color: #dbeafe;
+            border-left: 4px solid var(--primary);
+            padding: 1.5rem;
+            border-radius: 0 8px 8px 0;
+        }
+        .danger-box {
+            background-color: #fee2e2;
+            border-left: 4px solid var(--danger);
+            padding: 1.5rem;
+            border-radius: 0 8px 8px 0;
+        }
+        .api-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 1rem;
+        }
+        .api-table th, .api-table td {
+            border: 1px solid #e5e7eb;
+            padding: 0.75rem 1rem;
+            text-align: left;
+            vertical-align: top;
+        }
+        .api-table th {
+            background-color: #f9fafb;
+            font-weight: 600;
+        }
+        .api-table .method {
+            font-weight: 700;
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-size: 0.8em;
+            color: white;
+            white-space: nowrap;
+        }
+        .method-get { background-color: #2563eb; }
+        .method-post { background-color: #16a34a; }
+        .method-ws { background-color: #9333ea; }
+        .example-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        .example-tab {
+            padding: 0.75rem 1.5rem;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+            font-weight: 500;
+            margin-bottom: -2px;
+        }
+        .example-tab.active {
+            border-bottom-color: var(--primary);
+            color: var(--primary);
+        }
+        .example-content { display: none; margin-top: 1rem;}
+        .example-content.active { display: block; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+    <div class="flex min-h-screen">
+        <aside class="w-80 bg-white shadow-lg p-6 hidden md:block sticky top-0 h-screen overflow-y-auto">
+            <div class="text-center mb-12">
+                <h1 class="text-3xl font-bold text-gray-800">
+                    <i class="fas fa-project-diagram text-blue-500 mr-2"></i>Grapthway
+                </h1>
+                <p class="text-sm text-gray-500 mt-1">Unified Protocol Manual</p>
+            </div>
+            <nav>
+                <h3 class="text-xs font-bold uppercase text-gray-400 mb-2 px-4">Introduction</h3>
+                <ul class="space-y-1 mb-6">
+                    <li><a href="#what-is-grapthway" class="block py-2.5 px-4 rounded nav-link">What is Grapthway?</a></li>
+                </ul>
+                <h3 class="text-xs font-bold uppercase text-gray-400 mb-2 px-4">For Node Operators</h3>
+                <ul class="space-y-1 mb-6">
+                    <li><a href="#op-architecture" class="block py-2.5 px-4 rounded nav-link">P2P Architecture</a></li>
+                    <li><a href="#op-ledger" class="block py-2.5 px-4 rounded nav-link">Ledger Deep Dive</a></li>
+                    <li><a href="#op-ha" class="block py-2.5 px-4 rounded nav-link">HA & Fault Tolerance</a></li>
+                    <li><a href="#op-deployment" class="block py-2.5 px-4 rounded nav-link">Deployment</a></li>
+                    <li><a href="#op-kubernetes" class="block py-2.5 px-4 rounded nav-link">Kubernetes Guide</a></li>
+                    <li><a href="#op-configuration" class="block py-2.5 px-4 rounded nav-link">Configuration</a></li>
+                    <li><a href="#op-security" class="block py-2.5 px-4 rounded nav-link">Security & Wallets</a></li>
+                    <li><a href="#op-observability" class="block py-2.5 px-4 rounded nav-link">Observability</a></li>
+                </ul>
+                <h3 class="text-xs font-bold uppercase text-gray-400 mb-2 px-4">For Engineers & Developers</h3>
+                <ul class="space-y-1">
+                    <li><a href="#dev-overview" class="block py-2.5 px-4 rounded nav-link">Overview & Wallets</a></li>
+                    <li><a href="#dev-client" class="block py-2.5 px-4 rounded nav-link">JS Client & Tooling</a></li>
+                    <li><a href="#dev-registration" class="block py-2.5 px-4 rounded nav-link">Service Registration</a></li>
+                    <li><a href="#dev-pipelines" class="block py-2.5 px-4 rounded nav-link">Orchestration Pipelines</a></li>
+                    <li><a href="#dev-workflows" class="block py-2.5 px-4 rounded nav-link">Durable Workflows</a></li>
+                    <li><a href="#dev-stitching" class="block py-2.5 px-4 rounded nav-link">Schema Stitching</a></li>
+                    <li><a href="#dev-security" class="block py-2.5 px-4 rounded nav-link">Security Best Practices</a></li>
+                </ul>
+                 <h3 class="text-xs font-bold uppercase text-gray-400 mb-2 mt-6 px-4">Common</h3>
+                 <ul class="space-y-1">
+                    <li><a href="#economic-layer" class="block py-2.5 px-4 rounded nav-link">The Economic Layer</a></li>
+                    <li><a href="#admin-dashboard" class="block py-2.5 px-4 rounded nav-link">The Admin Dashboard</a></li>
+                    <li><a href="#api-reference" class="block py-2.5 px-4 rounded nav-link">API Reference</a></li>
+                 </ul>
+            </nav>
+        </aside>
+
+        <main class="flex-1 p-6 md:p-12 overflow-y-auto">
+            <header class="mb-16 text-center">
+                <h1 class="text-4xl md:text-5xl font-extrabold text-dark mb-4 tracking-tight">
+                    Grapthway Protocol Engineering Manual
+                </h1>
+                <p class="text-xl text-gray-600 max-w-3xl mx-auto">
+                    The complete, in-depth guide to operating and building on the Grapthway Decentralized Access Layer.
+                </p>
+            </header>
+
+            <div class="space-y-24">
+                 <!-- ================================================================= -->
+                <!-- ==================== WHAT IS GRAPTHWAY SECTION ================== -->
+                <!-- ================================================================= -->
+                <div>
+                     <section id="what-is-grapthway" class="mb-24">
+                        <h2 class="text-3xl font-bold text-dark mb-8 section-title">What is Grapthway?</h2>
+                        <p class="mb-6 text-lg text-gray-600">
+                            Grapthway is a fully decentralized protocol designed to manage, secure, and orchestrate communication between microservices. It acts as a sophisticated API gateway, but with no central points of failure. Instead of relying on centralized databases or message brokers, Grapthway leverages a peer-to-peer (P2P) network built on libp2p to create a resilient, scalable, and self-sustaining ecosystem for modern applications.
+                        </p>
+                        <p class="mb-8 text-lg text-gray-600">
+                            It combines a declarative orchestration engine, a fault-tolerant system for long-running tasks, and a built-in economic layer into a single, cohesive platform. This allows developers to focus on building business logic while node operators are incentivized to provide the robust infrastructure required to run it.
+                        </p>
+                        
+                        <h3 class="text-2xl font-semibold text-dark mt-10 mb-4">Core Pillars of Grapthway</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-12">
+                            <div class="bg-white p-6 rounded-lg shadow border-l-4 border-blue-500">
+                                <h4 class="text-xl font-bold mb-2 text-dark">Decentralized Orchestration</h4>
+                                <p class="text-gray-600">Define complex, multi-step workflows in simple JSON. Grapthway coordinates calls across GraphQL and REST services to perform tasks like authentication, data enrichment, and distributed transactions.</p>
+                            </div>
+                            <div class="bg-white p-6 rounded-lg shadow border-l-4 border-green-500">
+                                <h4 class="text-xl font-bold mb-2 text-dark">Durable Workflows</h4>
+                                <p class="text-gray-600">Execute long-running, asynchronous business processes with guaranteed completion. The system is fault-tolerant, persisting workflow state to a DHT and automatically recovering from node failures.</p>
+                            </div>
+                            <div class="bg-white p-6 rounded-lg shadow border-l-4 border-amber-500">
+                                <h4 class="text-xl font-bold mb-2 text-dark">Incentivized Economic Layer</h4>
+                                <p class="text-gray-600">A built-in, high-performance ledger and utility token (GCU) create a sustainable economy. Developers pay for compute, and node operators earn rewards for providing reliable infrastructure, secured by a Proof-of-Stake consensus.</p>
+                            </div>
+                        </div>
+
+                        <div class="diagram-container mb-12">
+                            <h4 class="text-xl font-semibold mb-4 text-center">Grapthway High-Level Architecture</h4>
+                            <div class="mermaid text-center">
+                                graph TD
+                                    subgraph "External World"
+                                        Client[API Client]
+                                        Developer[Developer Tools/CI/CD]
+                                    end
+
+                                    subgraph "Grapthway P2P Network"
+                                        subgraph "API & Coordination Layer"
+                                            S1[Server Node 1]
+                                            S2[Server Node 2]
+                                        end
+                                        
+                                        subgraph "Background Processing Layer"
+                                            W1[Worker Node 1]
+                                            W2[Worker Node 2]
+                                        end
+
+                                        subgraph "Decentralized State & Communication"
+                                            GossipBus((GossipSub Pub/Sub Bus))
+                                            DHT[Kademlia DHT <br/><i>Service Configs, Workflow State</i>]
+                                            Ledger[High-Performance Ledger <br/><i>Accounts, Balances, Stakes</i>]
+                                        end
+                                    end
+
+                                    subgraph "Downstream Infrastructure"
+                                        DS1[Downstream Microservice A]
+                                        DS2[Downstream Microservice B]
+                                    end
+                                    
+                                    Client -- "1. API Request (GraphQL/REST)" --> S1
+                                    S1 -- "2. Executes Sync Pipeline" --> DS1
+                                    S1 -- "3. Proxies/Enriches" --> DS2
+                                    S1 --> Client
+                                    
+                                    Developer -- "A. Signs & Publishes Config" --> S2
+                                    S2 -- "B. Stores in DHT & Gossips CID" --> DHT
+                                    S2 -- "C. Gossip" --> GossipBus
+                                    GossipBus -- "D. State Sync" --> S1
+                                    GossipBus -- "D. State Sync" --> W1
+                                    GossipBus -- "D. State Sync" --> W2
+                                    GossipBus -- "D. State Sync" --> Ledger
+
+                                    S1 -- "4. Triggers Durable Workflow" --> GossipBus
+                                    GossipBus -- "5. Announces Task" --> W1
+                                    GossipBus -- "5. Announces Task" --> W2
+                                    W1 -- "6. Claims Task from Coordinator (S1)" --> S1
+                                    W1 -- "7. Executes Step" --> DS2
+                                    W1 -- "8. Checkpoints State" --> DHT
+                                    
+                                    S1 -- "9. Batches Economic Events" --> LedgerAggregator[Ledger Aggregator]
+                                    LedgerAggregator -- "10. Submits Block" --> Ledger
+                                    Ledger -- "11. Consensus" --> GossipBus
+
+                                    classDef apiLayer fill:#e0f2fe,stroke:#38bdf8,stroke-width:2px
+                                    classDef processingLayer fill:#dcfce7,stroke:#22c55e,stroke-width:2px
+                                    classDef stateLayer fill:#f1f5f9,stroke:#64748b,stroke-width:2px
+
+                                    class S1,S2 apiLayer
+                                    class W1,W2 processingLayer
+                                    class GossipBus,DHT,Ledger stateLayer
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
+                <!-- ================================================================= -->
+                <!-- ==================== NODE OPERATOR SECTION ====================== -->
+                <!-- ================================================================= -->
+                <div>
+                    <div class="text-center mb-12">
+                        <h2 class="text-3xl font-bold text-dark inline-block px-8 py-3 bg-blue-100 text-blue-700 rounded-full">For Node Operators</h2>
+                        <p class="mt-4 text-lg text-gray-600">This section covers how to run, configure, and secure the Grapthway network infrastructure.</p>
+                    </div>
+
+                    <section id="op-architecture" class="mb-24">
+                        <h2 class="text-3xl font-bold text-dark mb-8 section-title">P2P Architecture</h2>
+                        <p class="mb-6 text-gray-600">The Grapthway Protocol is a fully decentralized system built on <a href="https://libp2p.io/" target="_blank" class="text-blue-600 hover:underline">libp2p</a>. It eliminates all central points of failure by using a peer-to-peer network for all core functions, including service discovery, state synchronization, and task coordination. There is no central database or message broker.</p>
+                        
+                        <h3 class="text-2xl font-semibold text-dark mt-10 mb-4">Node Roles</h3>
+                        <p class="mb-6 text-gray-600">An operator can run a Grapthway node in one of two roles, determined by the `GRAPTHWAY_ROLE` environment variable:</p>
+                        <ul class="list-disc list-inside space-y-3 text-gray-600 mb-8">
+                            <li><strong>Server Nodes (`server`):</strong> The public-facing entry points of the network. They listen for API requests from clients, execute synchronous orchestration pipelines, and act as coordinators for durable workflows. They are the primary participants in the economic layer and consensus.</li>
+                            <li><strong>Worker Nodes (`worker`):</strong> Headless background processors that do not expose a public API. They listen for task announcements on the P2P network and execute the steps of durable, long-running workflows. They do not participate in consensus or directly earn rewards but are essential for the network's asynchronous capabilities.</li>
+                        </ul>
+
+                        <h3 class="text-2xl font-semibold text-dark mt-10 mb-4">Core P2P Components & Protocols</h3>
+                         <ul class="list-disc list-inside space-y-3 text-gray-600 mb-8">
+                            <li><strong>GossipSub:</strong> The backbone of communication. All state updates, new configurations, ledger transactions, and task announcements are propagated through the network using this efficient pub/sub protocol.</li>
+                            <li><strong>Kademlia DHT:</strong> A decentralized key-value store. It's used to persist critical information that needs to be retrievable by any node at any time, such as service configuration files and the state of active durable workflows.</li>
+                             <li><strong>Stake-Based Handshake:</strong> When a new node connects to a peer, it initiates a `NodeHello` handshake. The receiving peer verifies the new node's version, network ID, and—most importantly—checks the ledger to ensure the new node has sufficient GCU staked for its declared hardware resources. This prevents under-provisioned or malicious nodes from joining the network.</li>
+                             <li><strong>Direct Stream Protocols:</strong> For time-sensitive consensus messages like `PreBlockAck` and `NextBlockReady`, nodes establish direct, fast streams instead of relying on gossip, reducing latency and improving block production speed.</li>
+                        </ul>
+                    </section>
+                     <section id="op-ledger" class="mb-24">
+                        <h2 class="text-3xl font-bold text-dark mb-8 section-title">Ledger Deep Dive</h2>
+                        <p class="mb-6 text-gray-600">
+                           Grapthway features a custom-built, high-performance ledger optimized for the high-throughput demands of an API gateway. It is not a traditional blockchain, but a decentralized state machine that uses a combination of deterministic leader election, gossip, and aggressive parallel processing to achieve fast finality and high transaction throughput.
+                        </p>
+                        <div class="diagram-container mb-12">
+                            <h4 class="text-xl font-semibold mb-4 text-center">Parallelized Block Production Pipeline</h4>
+                            <div class="mermaid text-center">
+                                graph TD
+                                    A[1. Readiness & Parallel Selection] --> B{2. Parallel Batching & Nonce Assignment};
+                                    B --> C[3. Pre-Proposal & Pre-Validation];
+                                    C --> D[4. Finalization & Fast Commit];
+                                    
+                                    subgraph Leader Node
+                                        direction LR
+                                        A & B & C & D
+                                    end
+                                    
+                                    subgraph Validator Nodes
+                                        direction LR
+                                        V1(Receive Pre-Proposal)
+                                        V2(Parallel Validation)
+                                        V3(Cache Valid Result)
+                                        V4(Send ACK)
+                                        V5(Receive Final Block)
+                                        V6(Cache Hit & Instant Commit)
+                                    end
+
+                                    C -- Broadcast Pre-Proposal --> V1;
+                                    V1 --> V2 --> V3 --> V4;
+                                    V4 -- Signed ACK --> C;
+                                    D -- Broadcast Final Block --> V5;
+                                    V5 --> V6
+                            </div>
+                        </div>
+
+                        <h3 class="text-2xl font-semibold text-dark mt-10 mb-4">The Consensus & Block Lifecycle</h3>
+                        <ol class="list-decimal list-inside space-y-4 text-gray-600 mb-8">
+                            <li>
+                                <strong>Deterministic Leader Election:</strong> For each new block height, a single leader is chosen pseudo-randomly from the validator set defined in the <em>previous</em> block's `NextValidators` field. This is a crucial design choice that eliminates race conditions and ensures all nodes agree on the leader without needing real-time network communication.
+                            </li>
+                            <li>
+                                <strong>Readiness & Parallel Selection:</strong> The current block leader first waits for a quorum of `NextBlockReady` signals from other validators, ensuring the network is prepared for the next block. Concurrently, a pool of worker goroutines scans the sharded mempool in parallel to select a large set of candidate transactions.
+                            </li>
+                             <li>
+                                <strong>Parallel Batching & Nonce Assignment:</strong> Using a map-reduce pattern, worker goroutines concurrently process the candidate transactions. They create deterministic batches for transfers, debits, and rewards, and assign nonces to user-initiated transactions in parallel. This massively accelerates the most computationally intensive part of block creation.
+                            </li>
+                             <li>
+                                <strong>Pre-Proposal & Pre-Validation:</strong> The leader broadcasts a `PreBlockProposal` containing the processed transactions. Validators receive this, run the same parallel batch recreation and validation logic, store the valid result in a local `validatedProposalCache`, and return a signed acknowledgment (ACK) to the leader.
+                            </li>
+                            <li>
+                                <strong>Finalization & Fast Commit:</strong> After receiving a supermajority of ACKs, the leader broadcasts the final, signed block containing the next validator set. Validators perform a critical optimization: they look up the block's `ProposalID` in their cache. On a successful hit, they skip all expensive validation and instantly commit the state changes, achieving extremely fast finality.</li>
+                        </ol>
+                    </section>
+
+
+                    <section id="op-ha" class="mb-24">
+                        <h2 class="text-3xl font-bold text-dark mb-8 section-title">High Availability & Fault Tolerance</h2>
+                        <p class="mb-6 text-gray-600">The decentralized architecture of Grapthway is inherently resilient. The most critical failure scenario is a `server` node going offline while it is coordinating active durable workflows. The protocol has a built-in, automatic recovery mechanism to handle this.</p>
+                        
+                        <h3 class="text-2xl font-semibold text-dark mt-10 mb-4">The Durable Workflow Recovery Protocol</h3>
+                        <p class="mb-6 text-gray-600">When a coordinator fails, its workflows become "orphaned." The network automatically detects and recovers these workflows without manual intervention:</p>
+                        <ol class="list-decimal list-inside space-y-3 text-gray-600 mb-8">
+                            <li><strong>Detection:</strong> A `worker` node attempts to claim a task from a coordinator but finds the coordinator is unreachable (the P2P stream fails to open).</li>
+                            <li><strong>State Retrieval:</strong> The worker queries the DHT for the last known state (checkpoint) of the orphaned workflow instance using its ID.</li>
+                            <li><strong>Recovery Proposal:</strong> The worker broadcasts a `RecoveryProposal` message over the P2P gossip network. This message contains the last known state of the workflow and nominates itself as the new coordinator.</li>
+                            <li><strong>Consensus & Takeover:</strong> Other `server` nodes hear this proposal. They verify that the original coordinator is indeed offline. The first server to process the proposal will take over coordination, update the workflow's state in the DHT with its own ID, and immediately announce the next task for the recovered workflow.</li>
+                        </ol>
+                        <div class="tip-box mb-8">
+                            <p class="text-blue-800"><i class="fas fa-shield-alt mr-2"></i>This entire process is automatic and ensures that long-running tasks are not lost due to single-node failures, providing a robust foundation for mission-critical applications.</p>
+                        </div>
+                    </section>
+
+                    <section id="op-deployment" class="mb-24">
+                        <h2 class="text-3xl font-bold text-dark mb-8 section-title">Docker Deployment</h2>
+                        <p class="mb-6 text-gray-600">The recommended way to run Grapthway nodes is with Docker and Docker Compose. This guide will walk you through setting up a multi-node network on a single machine.</p>
+
+                        <h3 class="text-2xl font-semibold text-dark mt-10 mb-4">Step 1: Create Wallets</h3>
+                        <p class="mb-6 text-gray-600">First, you need to create wallets for your nodes. Start a temporary node to use its wallet creation API.</p>
+                        <div class="code-block mb-4">
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                            <pre><code class="language-bash"># Start a temporary node
+docker run -d -p 5000:5000 --name grapthway-temp farisbahdlor/grapthway:decentralized-v1.0
+
+# Create a wallet (this node is its own operator, so no signature is needed)
+curl -X POST http://localhost:5000/admin/wallet/create
+
+# The response will contain address, publicKey, and privateKey.
+# SAVE THE privateKey SECURELY. Repeat for each node you plan to run.
+
+# Stop and remove the temporary node
+docker stop grapthway-temp && docker rm grapthway-temp
+</code></pre>
+                        </div>
+                        
+                        <h3 class="text-2xl font-semibold text-dark mt-10 mb-4">Step 2: Create `docker-compose.yml`</h3>
+                        <p class="mb-6 text-gray-600">Create a `docker-compose.yml` file. The first node (`grapthway-node-1`) will be our bootstrap peer. Subsequent nodes will use its address to connect.</p>
+                        <div class="code-block mb-8">
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                            <pre><code class="language-yaml">version: '3.8'
+
+services:
+  grapthway-node-1:
+    image: farisbahdlor/grapthway:decentralized-v1.0
+    container_name: grapthway-node-1
+    ports:
+      - "5001:5000" # Public API
+      - "40951:40949" # P2P Port
+    environment:
+      - PORT=5000
+      - P2P_PORT=40949
+      - NODE_OPERATOR_PRIVATE_KEY=YOUR_NODE_1_PRIVATE_KEY # Paste key from Step 1
+    volumes:
+      - ./data/node-1:/data # Persist ledger data
+    networks:
+      grapthway-net:
+        ipv4_address: 172.20.0.10
+
+  grapthway-node-2:
+    image: farisbahdlor/grapthway:decentralized-v1.0
+    container_name: grapthway-node-2
+    ports:
+      - "5002:5000"
+      - "40952:40949"
+    environment:
+      - PORT=5000
+      - P2P_PORT=40949
+      - NODE_OPERATOR_PRIVATE_KEY=YOUR_NODE_2_PRIVATE_KEY
+      # This node connects to node-1 to join the network
+      - BOOTSTRAP_PEERS=/ip4/172.20.0.10/tcp/40949/p2p/NODE_1_PEER_ID
+    volumes:
+      - ./data/node-2:/data
+    depends_on:
+      - grapthway-node-1
+    networks:
+      grapthway-net:
+
+  grapthway-worker-1:
+    image: farisbahdlor/grapthway:decentralized-v1.0
+    container_name: grapthway-worker-1
+    environment:
+      - GRAPTHWAY_ROLE=worker
+      - P2P_PORT=40949
+      - NODE_OPERATOR_PRIVATE_KEY=YOUR_WORKER_1_PRIVATE_KEY
+      - BOOTSTRAP_PEERS=/ip4/172.20.0.10/tcp/40949/p2p/NODE_1_PEER_ID
+    volumes:
+      - ./data/worker-1:/data
+    depends_on:
+      - grapthway-node-1
+    networks:
+      grapthway-net:
+
+networks:
+  grapthway-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+</code></pre>
+                        </div>
+                        
+                        <h3 class="text-2xl font-semibold text-dark mt-10 mb-4">Step 3: Get Peer ID and Launch</h3>
+                        <ol class="list-decimal list-inside space-y-3 text-gray-600 mb-8">
+                            <li>Start the first node: `docker-compose up -d grapthway-node-1`.</li>
+                            <li>Get its Peer ID from the logs: `docker logs grapthway-node-1`. Look for a line like `P2P Node started with ID: 12D3Koo...`.</li>
+                            <li>Paste this Peer ID into the `BOOTSTRAP_PEERS` variables in your `docker-compose.yml`.</li>
+                            <li>Launch the rest of the network: `docker-compose up -d`.</li>
+                        </ol>
+                    </section>
+                    
+                    <section id="op-kubernetes" class="mb-24">
+                        <h2 class="text-3xl font-bold text-dark mb-8 section-title">Kubernetes Guide</h2>
+                        <p class="mb-6 text-gray-600">Deploying Grapthway on Kubernetes is the recommended approach for production. This enables high availability, scalability, and robust security.</p>
+
+                        <h3 class="text-2xl font-semibold text-dark mt-10 mb-4">Best Practices</h3>
+                        <ul class="list-disc list-inside space-y-3 text-gray-600 mb-8">
+                            <li><strong>Use an Ingress Controller:</strong> Grapthway is an application gateway, not a network-level ingress. Use an Ingress Controller (like NGINX) to handle TLS termination and route traffic to the Grapthway `Service`.</li>
+                            <li><strong>Separate Deployments:</strong> Run `server` and `worker` nodes in separate Kubernetes `Deployments`. This allows you to scale your API-facing layer and your background processing layer independently.</li>
+                            <li><strong>Secure Downstream Services:</strong> Use Kubernetes `NetworkPolicy` resources to ensure your downstream microservices can <em>only</em> be accessed by Grapthway pods, creating a secure application network.</li>
+                        </ul>
+                        
+                        <h3 class="text-2xl font-semibold text-dark mt-10 mb-4">Example `NetworkPolicy`</h3>
+                        <p class="mb-6 text-gray-600">
+                            This policy ensures that only pods with the label `app: grapthway-server` can send traffic to pods with the label `app: order-service`. All other traffic will be denied.
+                        </p>
+                        <div class="code-block mb-8">
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                            <pre><code class="language-yaml">apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-grapthway-to-orders
+spec:
+  podSelector:
+    matchLabels:
+      app: order-service # This policy applies to the order-service pods
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: grapthway-server # Allow traffic ONLY from Grapthway server pods
+    ports:
+    - protocol: TCP
+      port: 80 # The port your order-service listens on
+</code></pre>
+                        </div>
+                    </section>
+
+                    <section id="op-configuration" class="mb-24">
+                        <h2 class="text-3xl font-bold text-dark mb-8 section-title">Node Configuration</h2>
+                        <p class="mb-6 text-gray-600">Grapthway is configured using environment variables. This is the primary way to control a node's role, identity, and network settings.</p>
+                        <div class="overflow-x-auto bg-white rounded-lg border">
+                            <table class="api-table">
+                                <thead>
+                                    <tr>
+                                        <th>Variable</th>
+                                        <th>Description</th>
+                                        <th>Required</th>
+                                        <th>Default / Example</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><code>GRAPTHWAY_ROLE</code></td>
+                                        <td>Determines the operational mode of the node.</td>
+                                        <td>No</td>
+                                        <td><code>server</code> or <code>worker</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td><code>PORT</code></td>
+                                        <td>The port for the `server` instance's public API.</td>
+                                        <td>No</td>
+                                        <td><code>5000</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td><code>P2P_PORT</code></td>
+                                        <td>The port for libp2p network communication.</td>
+                                        <td>No</td>
+                                        <td><code>40949</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td><code>NODE_OPERATOR_PRIVATE_KEY</code></td>
+                                        <td>The hex-encoded private key for the node's wallet. If not provided, a temporary one is generated.</td>
+                                        <td>No (but <strong>highly recommended</strong> for a stable identity)</td>
+                                        <td><code>e.g., 1a2b3c...</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td><code>BOOTSTRAP_PEERS</code></td>
+                                        <td>A comma-separated list of multiaddresses of other nodes to connect to.</td>
+                                        <td>For nodes after the first</td>
+                                        <td><code>/ip4/172.20.0.10/tcp/40949/p2p/12D3Koo...</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td><code>LOG_RETENTION_DAYS</code></td>
+                                        <td>The number of days to retain historical logs on disk.</td>
+                                        <td>No</td>
+                                        <td><code>7</code></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                    
+                    <section id="op-security" class="mb-24">
+                        <h2 class="text-3xl font-bold text-dark mb-8 section-title">Security & Wallets</h2>
+                        <p class="mb-6 text-gray-600">The decentralized Grapthway protocol operates on a zero-trust model. There are no bearer tokens. All privileged actions are authorized by verifying a cryptographic signature from the appropriate wallet.</p>
+                        <div class="danger-box mb-8">
+                            <p class="text-red-800"><i class="fas fa-key mr-2"></i><strong>Private Key Management is Critical:</strong> A private key grants full control over its corresponding address. Store your Node Operator and Developer private keys in a secure location like a password manager or a dedicated secrets management system. Never commit them to source control.</p>
+                        </div>
+                        <h3 class="text-2xl font-semibold text-dark mt-10 mb-4">Unified Node Identity</h3>
+                        <p class="mb-6 text-gray-600">
+                            A single private key, provided via the <code>NODE_OPERATOR_PRIVATE_KEY</code> environment variable, now controls all aspects of a node's identity:
+                        </p>
+                        <ul class="list-disc list-inside space-y-3 text-gray-600 mb-8">
+                           <li><strong>P2P Network ID:</strong> The private key is used to generate the node's stable libp2p Peer ID.</li>
+                           <li><strong>Economic Wallet:</strong> The same key is used as the node's economic wallet, where it receives staking deposits and compute rewards.</li>
+                           <li><strong>Administrative Access:</strong> To perform an administrative action (like creating a new wallet), you must prove you are the node's operator by signing a piece of data with this key.</li>
+                        </ul>
+                    </section>
+
+                    <section id="op-observability" class="mb-24">
+                        <h2 class="text-3xl font-bold text-dark mb-8 section-title">Observability</h2>
+                        <p class="mb-6 text-gray-600">Grapthway provides a powerful, built-in observability suite accessible via the Admin Dashboard. This suite is designed for complete operational awareness, allowing you to monitor, debug, and manage the entire network from a single pane of glass.</p>
+                        
+                        <h3 class="text-2xl font-semibold text-dark mt-10 mb-4">Log Types</h3>
+                        <p class="mb-6 text-gray-600">The logging engine captures detailed, structured logs for different aspects of the system:</p>
+                        <ul class="list-disc list-inside space-y-3 text-gray-600 mb-8">
+                            <li><strong>Gateway Logs:</strong> The most detailed logs, capturing the full lifecycle of every API request. This includes the client request/response, all pipeline step executions (with their own request/response data), and any errors encountered.</li>
+                            <li><strong>Ledger Logs:</strong> A complete audit trail of all economic activity. Every debit, transfer, and staking transaction is logged.</li>
+                            <li><strong>Admin Logs:</strong> Records all administrative actions taken, such as wallet creation.</li>
+                            <li><strong>Live Logs:</strong> The dashboard provides a real-time WebSocket stream of all logs as they are generated by the node.</li>
+                        </ul>
+
+                        <h3 class="text-2xl font-semibold text-dark mt-10 mb-4">Hardware Monitoring</h3>
+                        <p class="mb-6 text-gray-600">The "Hardware" tab in the dashboard provides real-time visibility into the resource consumption of the node's container, reading directly from the cgroup filesystem. This includes:</p>
+                        <ul class="list-disc list-inside space-y-3 text-gray-600 mb-8">
+                            <li><strong>CPU Usage & Allocation:</strong> See the current CPU usage percentage and the total cores allocated to the container.</li>
+                            <li><strong>Memory Usage & Limits:</strong> Monitor how much RAM is being used versus the container's memory limit.</li>
+                            <li><strong>Global Stats:</strong> The node also gossips its hardware stats, allowing the dashboard to show an aggregated view of the entire network's resource capacity and usage.</li>
+                        </ul>
+                    </section>
+                </div>
+
+                <!-- ================================================================= -->
+                <!-- ==================== DEVELOPER SECTION ========================== -->
+                <!-- ================================================================= -->
+                <div>
+                    <div class="text-center mb-12 mt-24">
+                        <h2 class="text-3xl font-bold text-dark inline-block px-8 py-3 bg-green-100 text-green-700 rounded-full">For Engineers & Developers</h2>
+                        <p class="mt-4 text-lg text-gray-600">This section covers how to build services, define orchestration logic, and publish them to the Grapthway network.</p>
+                    </div>
+
+                    <section id="dev-overview" class="mb-24">
+                        <h2 class="text-3xl font-bold text-dark mb-8 section-title">Overview & Wallets</h2>
+                        <p class="mb-6 text-gray-600">As a developer, you can build standard GraphQL or REST microservices in any language and host them anywhere. To make them available through the Grapthway network, you simply define their schema and orchestration rules in a JSON configuration file, cryptographically sign it with your developer wallet, and publish it to any server node.</p>
+                        <p class="mb-6 text-gray-600">Every developer needs their own wallet. This identity is used to sign and publish service configurations, proving ownership. To get a wallet, ask any Node Operator on the network to create one for you using their `/admin/wallet/create` endpoint. They will provide you with your `address`, `publicKey`, and `privateKey`.</p>
+                        <p class="mb-6 text-gray-600">All API requests consume <strong>Grapthway Compute Units (GCU)</strong>. You must have a sufficient GCU balance in your developer account to pay the node operators who process your requests.</p>
+                    </section>
+
+                    <section id="dev-client" class="mb-24">
+                        <h2 class="text-3xl font-bold text-dark mb-8 section-title">Developer Tooling: The Grapthway JS Client</h2>
+                        <p class="mb-6 text-gray-600">To simplify the process of signing and publishing configurations, we provide a simple JavaScript client. This client handles the complexities of key management, canonical JSON serialization, and cryptographic signing.</p>
+                        <p class="mb-6 text-gray-600">You can use this client in your CI/CD pipelines or deployment scripts to automatically publish your service configurations whenever you make a change.</p>
+                        
+                        <h3 class="text-2xl font-semibold text-dark mt-10 mb-4">Client Code (`grapthway-client.js`)</h3>
+                        <div class="code-block mb-8">
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                            <pre><code class="language-javascript">import 'dotenv/config';
+import elliptic from 'elliptic';
+import { createHash } from 'crypto';
+import fetch from 'node-fetch';
+
+const EC = elliptic.ec;
+const ec = new EC('secp256k1');
+
+const normalizeConfig = (data) => {
+    if (data === null || typeof data !== 'object') {
+        return data;
+    }
+
+    if (Array.isArray(data)) {
+        return data.map(normalizeConfig);
+    }
+
+    const normalized = {};
+    for (const [key, value] of Object.entries(data)) {
+        // Skip null and undefined values
+        if (value === null || value === undefined) {
+            continue;
+        }
+
+        // Skip empty strings (treat as default/unset)
+        if (typeof value === 'string' && value === '') {
+            continue;
+        }
+
+        // Skip empty arrays and objects
+        if (Array.isArray(value) && value.length === 0) {
+            continue;
+        }
+        if (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0) {
+            continue;
+        }
+
+        // Recursively normalize nested objects
+        normalized[key] = normalizeConfig(value);
+    }
+
+    return normalized;
+};
+
+const marshalCanonical = (data) => {
+    // First normalize the data to ensure consistent representation
+    const normalized = normalizeConfig(data);
+    
+    if (normalized === null || typeof normalized !== 'object') {
+        return JSON.stringify(normalized);
+    }
+
+    if (Array.isArray(normalized)) {
+        return `[${normalized.map(marshalCanonical).join(',')}]`;
+    }
+
+    // For objects, sort keys and process recursively
+    const keys = Object.keys(normalized).sort();
+    const pairs = keys.map(key => {
+        const value = normalized[key];
+        const valStr = marshalCanonical(value);
+        return `"${key}":${valStr}`;
+    });
+
+    return `{${pairs.join(',')}}`;
+};
+
+class GrapthwayClient {
+    constructor(privateKeyHex) {
+        if (!privateKeyHex) throw new Error('Private key is required.');
+        this.keyPair = ec.keyFromPrivate(privateKeyHex, 'hex');
+        this.publicKeyHex = this.keyPair.getPublic('hex');
+        // Use sha256 for address generation to match the Go implementation
+        const pubKeyBytes = Buffer.from(this.publicKeyHex.substring(2), 'hex');
+        const pubKeyHash = createHash('sha256').update(pubKeyBytes).digest();
+        this.address = `0x${pubKeyHash.toString('hex').slice(-40)}`;
+    }
+    
+    signConfig(originalConfig) {
+        // Create a mutable copy and add the developer's public key.
+        let finalConfigPayload = { ...originalConfig };
+        finalConfigPayload.developerPubKey = this.publicKeyHex;
+
+        // Normalize before creating canonical JSON ---
+        const canonicalJsonString = marshalCanonical(finalConfigPayload);
+        
+        console.log(`📝 Canonical JSON for ${originalConfig.service}:`, canonicalJsonString);
+        
+        // Hash the canonical string before signing.
+        const configHash = createHash('sha256').update(canonicalJsonString, 'utf8').digest();
+        const signature = this.keyPair.sign(configHash).toDER('hex');
+
+        return {
+            canonicalJson: canonicalJsonString,
+            signature: signature,
+            serviceName: originalConfig.service
+        };
+    }
+
+    async publish(canonicalJson, signature, serviceName) {
+        const nodeUrl = process.env.GRAPTHWAY_NODE_URL;
+        if (!nodeUrl) {
+            console.error('❌ GRAPTHWAY_NODE_URL is not set.');
+            return;
+        }
+        console.log(`📡 Publishing configuration for service "${serviceName}"...`);
+        console.log(`📝 Publishing with canonical JSON hash: ${createHash('sha256').update(canonicalJson, 'utf8').digest('hex')}`);
+        
+        try {
+            const body = canonicalJson;
+            
+            const userSignatureHash = createHash('sha256').update(body, 'utf8').digest();
+            const userSignature = this.keyPair.sign(userSignatureHash).toDER('hex');
+
+            const headers = {
+                'Content-Type': 'application/json',
+                'X-Grapthway-Developer-ID': this.address,
+                'X-Grapthway-User-Address': this.address,
+                'X-Grapthway-User-PublicKey': this.publicKeyHex,
+                'X-Grapthway-User-Signature': userSignature,
+                'X-Grapthway-Config-Signature': signature, 
+            };
+
+            const res = await fetch(`${nodeUrl}/api/v1/publish-config`, {
+                method: 'POST',
+                headers: headers,
+                body: body,
+            });
+
+            if (!res.ok) {
+                console.error(`❌ Failed to publish configuration: ${res.status} ${res.statusText} - ${await res.text()}`);
+            } else {
+                console.log(`✅ Successfully published configuration for ${serviceName}.`);
+            }
+        } catch (err) {
+            console.error('❌ Error publishing configuration:', err.message);
+        }
+    }
+    
+    async heartbeat(payload) {
+        const nodeUrl = process.env.GRAPTHWAY_NODE_URL;
+        if (!nodeUrl) return;
+
+        try {
+            const body = JSON.stringify(payload);
+            const hash = createHash('sha256').update(body, 'utf8').digest();
+            const signature = this.keyPair.sign(hash).toDER('hex');
+
+            const headers = {
+                'Content-Type': 'application/json',
+                'X-Grapthway-Developer-ID': this.address,
+                'X-Grapthway-User-Address': this.address,
+                'X-Grapthway-User-PublicKey': this.publicKeyHex,
+                'X-Grapthway-User-Signature': signature,
+            };
+
+            const res = await fetch(`${nodeUrl}/api/v1/health`, {
+                method: 'POST',
+                headers: headers,
+                body: body,
+            });
+            
+            if (res.ok) {
+                console.log(`❤️  Heartbeat for ${payload.service} sent successfully.`);
+            } else {
+                 console.error(`❤️‍🩹 Heartbeat for ${payload.service} failed: ${res.status} ${res.statusText} - ${await res.text()}`);
+            }
+        } catch (err) {
+            console.error(`❤️‍🩹 Error sending heartbeat for ${payload.service}:`, err.message);
+        }
+    }
+}
+
+export const grapthwayClient = new GrapthwayClient(process.env.SERVICE_PRIVATE_KEY);
+
+/**
+ * Middleware to verify that an incoming request is from a trusted Grapthway node.
+ * It checks the signature of the request body.
+ */
+export const grapthwayVerificationMiddleware = (req, res, next) => {
+    const signatureHex = req.headers['x-grapthway-signature'];
+    const nodeAddress = req.headers['x-grapthway-node-address'];
+    const nodePublicKeyHex = req.headers['x-grapthway-node-public-key'];
+
+    if (!signatureHex || !nodeAddress || !nodePublicKeyHex) {
+        return res.status(403).send('Forbidden: Missing Grapthway signature headers.');
+    }
+
+    try {
+        // 1. Verify that the address corresponds to the public key
+        const pubKeyBytes = Buffer.from(nodePublicKeyHex.substring(2), 'hex');
+        const pubKeyHash = createHash('sha256').update(pubKeyBytes).digest();
+        const derivedAddress = `0x${pubKeyHash.toString('hex').slice(-40)}`;
+
+        if (derivedAddress !== nodeAddress) {
+            console.error("Verification failed: Node address does not match public key.");
+            return res.status(403).send('Forbidden: Invalid Grapthway node identity.');
+        }
+
+        // 2. Verify the signature against the raw request body
+        if (!req.rawBody) {
+             console.error("Verification failed: Raw request body not found. Ensure bodyParser is configured correctly.");
+             return res.status(500).send('Internal Server Error: Missing raw body for verification.');
+        }
+
+        const requestHash = createHash('sha256').update(req.rawBody).digest();
+        const key = ec.keyFromPublic(nodePublicKeyHex, 'hex');
+        
+        if (key.verify(requestHash, signatureHex)) {
+            console.log(`✅ Request signature verified from Grapthway node: ${nodeAddress}`);
+            next();
+        } else {
+            console.error("Verification failed: Invalid signature.");
+            return res.status(403).send('Forbidden: Invalid Grapthway signature.');
+        }
+    } catch (error) {
+        console.error("Error during Grapthway signature verification:", error);
+        return res.status(403).send('Forbidden: Signature verification failed.');
+    }
+};
+</code></pre>
+                        </div>
+                    </section>
+
+                    <section id="dev-registration" class="mb-24">
+                        <h2 class="text-3xl font-bold text-dark mb-8 section-title">Service Registration & Configuration</h2>
+                        <p class="mb-6 text-gray-600">The `SignedServiceConfig` object is the heart of your service's presence on the network. It defines everything from its API contract to its orchestration logic.</p>
+                        
+                        <div class="example-tabs mb-6">
+                            <div class="example-tab active" data-target="reg-gql">GraphQL-Only Service</div>
+                            <div class="example-tab" data-target="reg-rest">REST-Only Service</div>
+                            <div class="example-tab" data-target="reg-hybrid">Hybrid Service</div>
+                            <div class="example-tab" data-target="reg-workflow">Workflow Definition</div>
+                        </div>
+
+                        <div class="example-content active" id="reg-gql">
+                            <h4 class="text-lg font-semibold text-gray-700 mb-3">GraphQL-Only Service</h4>
+                            <div class="code-block mb-8">
+                                <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                                <pre><code class="language-javascript">{
+  "service": "auth-service",
+  "schema": "type User { id: ID, name: String } type Mutation { login(user: String!): String }",
+  "type": "graphql",
+  "middlewareMap": {
+    "login": {
+      "pre": [{"service": "rate-limiter-rest", "method": "POST", "path": "/check", "onError": { "stop": true }}]
+    }
+  }
+}</code></pre>
+                            </div>
+                        </div>
+
+                        <div class="example-content" id="reg-rest">
+                            <h4 class="text-lg font-semibold text-gray-700 mb-3">REST-Only Service</h4>
+                            <div class="code-block mb-8">
+                                <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                                <pre><code class="language-javascript">{
+  "service": "inventory-api",
+  "type": "rest",
+  "path": "/v1/inventory",
+  "restPipelines": {
+    "POST /v1/inventory/update": {
+      "pre": [{"service": "auth-service", "field": "verifyAdmin", "passHeaders": ["Authorization"], "onError": { "stop": true }}]
+    }
+  }
+}</code></pre>
+                            </div>
+                        </div>
+                        
+                        <div class="example-content" id="reg-hybrid">
+                            <h4 class="text-lg font-semibold text-gray-700 mb-3">Hybrid Service</h4>
+                            <div class="code-block mb-8">
+                                <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                                <pre><code class="language-javascript">{
+  "service": "products-service",
+  "schema": "type Query { getProduct(id: ID!): Product }",
+  "type": "graphql",
+  "middlewareMap": {
+    "getProduct": {"pre": [{"service": "auth-service", "field": "validateSession", "onError": { "stop": true }}]}
+  },
+  "restPipelines": {
+    "POST /products/{id}/inventory": {"pre": [{"service": "auth-service", "field": "verifyAdmin", "onError": { "stop": true }}]}
+  }
+}</code></pre>
+                            </div>
+                        </div>
+
+                        <div class="example-content" id="reg-workflow">
+                            <h4 class="text-lg font-semibold text-gray-700 mb-3">Workflow Definition</h4>
+                            <div class="code-block mb-8">
+                                <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                                <pre><code class="language-javascript">{
+  "service": "orchestration-service",
+  "type": "graphql",
+  "middlewareMap": {
+    "user.onboarding.workflow": {
+      "isWorkflow": true,
+      "isDurable": true,
+      "isInternal": true,
+      "pre": [
+        {"service": "email-api-rest", "method": "POST", "path": "/v2/send-email", "bodyMapping": { "template_id": "welcome-email", "recipient": "args.email" }, "retryPolicy": { "attempts": 3, "delaySeconds": 60 }},
+        {"service": "analytics-gql", "operation": "mutation", "field": "trackNewUserEvent", "argsMapping": { "userId": "args.id" }}
+      ]
+    }
+  }
+}</code></pre>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section id="dev-pipelines" class="mb-24">
+                        <h2 class="text-3xl font-bold text-dark mb-8 section-title">Orchestration Pipelines</h2>
+                        <p class="mb-10 text-gray-600">Pipelines are the core of Grapthway's synchronous orchestration engine. They allow you to define declarative, multi-step workflows that execute before (`pre`) and after (`post`) your main service call. As of v2.0, pipelines work for both GraphQL fields and specific REST endpoints, and can even mix calls to GraphQL and REST services within a single workflow. For long-running, asynchronous, or mission-critical tasks, pipelines are used to trigger the **Durable Workflow Engine**.</p>
+                        
+                        <h3 class="text-2xl font-semibold text-dark mb-4">The Pipeline Context & Data Access</h3>
+                        <p class="mb-6 text-gray-600">
+                            The key to using pipelines effectively is understanding the <strong>pipeline context</strong>. This is an in-memory JSON object that is created at the start of a request and passed through each step. You use it to get initial data (like request arguments) and to pass data between steps. You access data from the context using <strong>dot notation</strong> (e.g., <code>"user.email"</code>).
+                        </p>
+
+                        <h4 class="text-xl font-semibold text-gray-800 mb-3">Initial Context (`pre` pipeline)</h4>
+                        <p class="mb-4 text-gray-600">Before the <code>pre</code> pipeline runs, the gateway populates the context with data from the original request:</p>
+                        <ul class="list-disc list-inside space-y-2 text-gray-600 mb-6">
+                            <li>
+                                <strong>For GraphQL requests:</strong> All incoming arguments (variables) are placed in an object under the key <code>args</code>. You can access them with <code>"args.yourArgumentName"</code>.
+                            </li>
+                            <li>
+                                <strong>For REST requests:</strong> The JSON request body is parsed and placed in an object under the key <code>request.body</code>. You can access its fields with <code>"request.body.yourFieldName"</code>.
+                            </li>
+                        </ul>
+
+                        <h4 class="text-xl font-semibold text-gray-800 mb-3">Merged Context (`post` pipeline)</h4>
+                        <p class="mb-4 text-gray-600">After your main service logic runs, the gateway creates a new, <strong>merged context</strong> for the <code>post</code> pipeline. This context contains:</p>
+                        <ul class="list-disc list-inside space-y-2 text-gray-600">
+                            <li>All data from the final <code>pre</code> pipeline context (e.g., anything you saved with <code>assign</code>).</li>
+                            <li>All top-level fields from the main service's JSON response.</li>
+                        </ul>
+                        <p class="text-gray-600 mb-8">This allows you to easily use both the initial session data and the result of the core operation in your follow-up tasks.</p>
+
+                        <h3 class="text-2xl font-semibold text-dark mt-10 mb-4">Conditional Step Execution</h3>
+                        <p class="mb-6 text-gray-600">
+                            The <code>conditional</code> property can be added to **any pipeline or workflow step** to control whether it executes. The gateway evaluates the string as a boolean expression against the current pipeline context. If the expression evaluates to `false`, the step is skipped entirely. This is a powerful tool for building dynamic, intelligent orchestration logic without needing to write imperative code.
+                        </p>
+                        <div class="code-block mb-8">
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                            <pre><code class="language-javascript">// This step will only run if the 'user' object in the context has a 'role' of 'admin'.
+{
+  "service": "audit-log-service",
+  "method": "POST",
+  "path": "/log-admin-action",
+  "conditional": "user.role == 'admin'", // The expression to evaluate.
+  "bodyMapping": {
+    "action": "Product Deletion",
+    "productId": "args.productId",
+    "adminId": "user.id"
+  }
+}</code></pre>
+                        </div>
+
+                        <h3 class="text-2xl font-semibold text-dark mt-10 mb-4">Transactional Pipelines & Rollbacks</h3>
+                        <p class="mb-6 text-gray-600">
+                            A critical feature for enterprise systems is data consistency across microservices. Grapthway enables this through two mechanisms: the <code>ledgerExecute</code> step for on-chain transactions, and the <code>onError.rollback</code> configuration for off-chain compensating actions.
+                        </p>
+                         <div class="tip-box mb-8">
+                            <p class="text-blue-800">
+                                <i class="fas fa-undo mr-2"></i>
+                                The gateway executes rollback steps in the <strong>reverse order</strong> of their corresponding successful steps, ensuring a logical "undo" sequence.
+                            </p>
+                        </div>
+                         <p class="mb-6 text-gray-600">
+                           If a <code>ledgerExecute</code> step succeeds but a subsequent step in the pipeline fails, the system will automatically create and submit a reverse transaction to the ledger, returning the funds to the original sender. This provides atomic, cross-service financial operations.
+                        </p>
+                        <div class="code-block mb-8">
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                            <pre><code class="language-javascript">// Example of a transactional "createUser" pipeline with a payment
+"createUser": {
+  "pre": [
+    {
+      "service": "user-db-service",
+      "field": "insertUser",
+      "argsMapping": { "details": "args.newUserDetails" },
+      "assign": { "newUser": "" },
+      "onError": {
+        "stop": true,
+        // Off-chain compensating action
+        "rollback": [{ "service": "user-db-service", "field": "deleteUserById", "argsMapping": { "id": "newUser.id" }}]
+      }
+    },
+    {
+      // NEW: This step performs an on-chain, delegated transfer
+      "ledgerExecute": {
+        "from": "args.payerAddress", // The user paying
+        "to": "context.developerAddress", // The service owner receiving payment
+        "amount": 1000 // In micro-GCU
+      },
+      // If any subsequent step fails, this transaction will be automatically reversed.
+      "onError": { "stop": true }
+    },
+    {
+      "service": "email-api-service",
+      "method": "POST",
+      "path": "/send-welcome-email",
+      "bodyMapping": { "email": "newUser.email", "name": "newUser.name" },
+      // If this email step fails, both the user creation and the payment will be rolled back.
+      "onError": { "stop": true } 
+    }
+  ]
+}</code></pre>
+                        </div>
+
+                        <h3 class="text-2xl font-semibold text-dark mb-4">Pipeline Step Configuration</h3>
+                        <p class="mb-6 text-gray-600">Each step in a pipeline is a JSON object with the following properties:</p>
+                        <div class="bg-white rounded-lg border p-6 mb-10">
+                            <ul class="list-none space-y-4">
+                                <li><code><strong>service</strong>: string</code> <span class="text-gray-500">- The name of the registered service to call. (Optional if using `callWorkflow`)</span></li>
+                                <li><code><strong>field</strong>: string</code> <span class="text-gray-500">- (GraphQL only) The query or mutation to execute.</span></li>
+                                <li><code><strong>method</strong>: string</code> <span class="text-gray-500">- (REST only) The HTTP method (e.g., "POST").</span></li>
+                                <li><code><strong>path</strong>: string</code> <span class="text-gray-500">- (REST only) The endpoint path for the downstream service.</span></li>
+                                <li><code><strong>argsMapping</strong>: object</code> <span class="text-gray-500">- Maps data to arguments (for GraphQL) or the initial context (for Workflows). Values can be dynamic from the context (e.g., <code>"userId": "user.id"</code>) or static (e.g., <code>"source": "gateway"</code>).</span></li>
+                                <li><code><strong>bodyMapping</strong>: object</code> <span class="text-gray-500">- (REST only) Maps data to the JSON request body. Supports both dynamic context values and static values.</span></li>
+                                <li><code><strong>passHeaders</strong>: string[]</code> <span class="text-gray-500">- An array of headers to pass from the original client request to this step's service.</span></li>
+                                <li><code><strong>assign</strong>: object</code> <span class="text-gray-500">- (Blocking steps only) Maps response data from this step into the pipeline context.</span></li>
+                                <li><code><strong>concurrent</strong>: boolean</code> <span class="text-gray-500">- If true, the gateway executes this step without waiting (fire-and-forget). Defaults to false.</span></li>
+                                <li><code><strong>onError</strong>: object</code> <span class="text-gray-500">- Defines failure behavior for blocking `pre` steps. Contains <code>stop</code> (boolean) and <code>rollback</code> (an array of pipeline steps).</span></li>
+                                <li><code><strong>callWorkflow</strong>: string</code> <span class="text-gray-500">- The name of a registered workflow to execute. This is the primary way to trigger asynchronous operations.</span></li>
+                                <li><code><strong>ledgerExecute</strong>: object</code> <span class="text-gray-500">- Defines an on-chain delegated transfer. Contains `from`, `to` (optional), and `amount`.</span></li>
+                                <li><code><strong>conditional</strong>: string</code> <span class="text-gray-500">- (Global) A boolean expression to decide if the step should run. See details above.</span></li>
+                            </ul>
+                        </div>
+                    </section>
+                    
+                    <section id="dev-workflows" class="mb-24">
+                        <h2 class="text-3xl font-bold text-dark mb-8 section-title">Durable Workflows</h2>
+                        <p class="mb-6 text-gray-600">
+                            While pipelines are excellent for synchronous request/response orchestration, many modern applications require long-running, asynchronous, and failure-resistant background tasks. The Grapthway <strong>Durable Workflow Engine</strong> is designed specifically for these scenarios. It allows you to define complex, multi-step business processes that are completely decoupled from the client request lifecycle and can reliably execute over minutes, hours, or even days.
+                        </p>
+                        
+                        <h3 class="text-2xl font-semibold text-dark mt-10 mb-4">Durable vs. In-Memory Workflows</h3>
+                        <p class="mb-6 text-gray-600">
+                            Understanding the difference between durable and in-memory (non-durable) workflows is crucial for designing a robust and efficient system. The choice depends entirely on the reliability requirements of the task.
+                        </p>
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
+                            <div class="bg-white p-6 rounded-xl border-t-4 border-gray-400 shadow-md">
+                                <h4 class="text-xl font-bold text-dark mb-3 flex items-center"><i class="fas fa-memory mr-3 text-gray-500"></i>In-Memory Workflows</h4>
+                                <ul class="list-disc pl-5 text-gray-600 space-y-2">
+                                    <li><strong>Configuration:</strong> Default behavior (<code>"isDurable": false</code>).</li>
+                                    <li><strong>Execution:</strong> Runs synchronously in the memory of the API server that receives the request. Fast with low overhead.</li>
+                                    <li><strong>Reliability:</strong> <strong>Not guaranteed.</strong> If the server instance crashes or restarts during execution, the workflow is lost.</li>
+                                    <li><strong>Retry Policy:</strong> The <code>retryPolicy</code> property has <strong>no effect</strong> on steps within an in-memory workflow.</li>
+                                    <li><strong>Best For:</strong> Lightweight, non-critical, "fire-and-forget" tasks like cache invalidation or sending non-essential notifications.</li>
+                                </ul>
+                            </div>
+                            <div class="bg-white p-6 rounded-xl border-t-4 border-blue-500 shadow-md">
+                                <h4 class="text-xl font-bold text-dark mb-3 flex items-center"><i class="fas fa-database mr-3 text-blue-500"></i>Durable Workflows</h4>
+                                <ul class="list-disc pl-5 text-gray-600 space-y-2">
+                                     <li><strong>Configuration:</strong> Requires <code>"isDurable": true</code>.</li>
+                                    <li><strong>Execution:</strong> Asynchronous and decoupled. The task is handed off to a separate pool of `worker` instances via the P2P network.</li>
+                                    <li><strong>Reliability:</strong> <strong>Guaranteed.</strong> The workflow's state is persisted in the decentralized DHT. It can survive worker crashes and gateway restarts.</li>
+                                    <li><strong>Retry Policy:</strong> <strong>Fully supported.</strong> The <code>retryPolicy</code> property is a core feature, allowing steps to automatically retry with delays upon failure.</li>
+                                    <li><strong>Best For:</strong> Mission-critical business processes that <strong>must</strong> complete, such as e-commerce order fulfillment or user data deletion.</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="tip-box mb-12">
+                            <h4 class="text-lg font-bold text-blue-800 mb-2 flex items-center"><i class="fas fa-layer-group mr-2"></i>Advanced Pattern: Reliable In-Memory Workflow Execution</h4>
+                            <p class="text-blue-800">
+                                You can achieve reliable execution for an <strong>in-memory</strong> workflow by calling it from a <strong>durable</strong> workflow.
+                            </p>
+                            <p class="mt-3 text-blue-800">
+                                In this powerful pattern, you place the <code>retryPolicy</code> on the <code>callWorkflow</code> step within the durable parent. If the in-memory workflow fails for any reason (e.g., a service it calls times out), the durable worker will treat the entire `callWorkflow` step as a failure and will retry it from the beginning according to the policy. This makes the entire in-memory process reliable without needing to make the nested workflow itself durable.
+                            </p>
+                        </div>
+
+                        <h3 class="text-2xl font-semibold text-dark mb-4">Workflow Configuration</h3>
+                        <p class="mb-6 text-gray-600">Workflows are defined just like pipelines, but with a few extra top-level flags in their configuration. They are then triggered from within a pipeline using the `callWorkflow` property.</p>
+
+                        <div class="bg-white rounded-lg border p-6 mb-10">
+                            <h4 class="text-lg font-semibold mb-3">New `PipelineConfig` Flags</h4>
+                            <ul class="list-none space-y-4">
+                                <li><code><strong>isWorkflow</strong>: boolean</code> <span class="text-gray-500">- If `true`, this pipeline configuration is treated as a reusable workflow that can be invoked by other pipelines via `callWorkflow`.</span></li>
+                                <li><code><strong>isDurable</strong>: boolean</code> <span class="text-gray-500">- If `true`, the workflow will be executed by the durable engine, persisting its state in the DHT and enabling features like `retryPolicy`. Requires `isWorkflow: true`.</span></li>
+                                <li><code><strong>isInternal</strong>: boolean</code> <span class="text-gray-500">- If `true`, this workflow cannot be attached directly to a GraphQL field or REST route and can only be called by another pipeline or workflow.</span></li>
+                            </ul>
+                            <h4 class="text-lg font-semibold mt-6 mb-3">New `PipelineStep` Properties</h4>
+                             <ul class="list-none space-y-4">
+                                <li><code><strong>callWorkflow</strong>: string</code> <span class="text-gray-500">- The key of a registered workflow to execute. When a pipeline step contains this, it triggers the named workflow instead of calling a service directly.</span></li>
+                                <li><code><strong>conditional</strong>: string</code> <span class="text-gray-500">- A boolean expression to evaluate against the workflow's context. The step will only run if the expression is true. See the Pipelines section for more detail.</span></li>
+                                <li><code><strong>retryPolicy</strong>: object</code> <span class="text-gray-500">- <strong>(Durable Workflows Only)</strong> Defines the retry strategy for a failing step. Contains `attempts` (number) and `delaySeconds` (number).</span></li>
+                            </ul>
+                        </div>
+
+                        <h3 class="text-2xl font-semibold text-dark mt-12 mb-4">Advanced Workflow Examples</h3>
+                        <p class="mb-6 text-gray-600">Explore how to solve complex, real-world problems using both durable and in-memory workflows. These examples explicitly demonstrate the new configuration flags.</p>
+
+                        <div class="example-tabs mb-6">
+                            <div class="example-tab active" data-target="wf-durable">Durable Workflows</div>
+                            <div class="example-tab" data-target="wf-inmemory">In-Memory Workflows</div>
+                            <div class="example-tab" data-target="wf-cron">Cron Jobs</div>
+                        </div>
+
+                        <div class="example-content active" id="wf-durable">
+                            <h4 class="text-lg font-semibold text-gray-700 mb-3">Use Case: Reliable, Asynchronous, Long-Running Tasks</h4>
+                            <p class="mb-6 text-gray-600">Durable workflows are essential for business processes that must complete, even if services are temporarily unavailable or the gateway restarts. They are perfect for order processing, data pipelines, and compliance tasks.</p>
+                            
+                            <div class="mb-10">
+                                <h5 class="text-xl font-semibold mb-2">1. E-commerce Order Fulfillment with `retryPolicy`</h5>
+                                <p class="mb-4 text-gray-600">After a payment is confirmed, this workflow reliably orchestrates all fulfillment steps. A failure in the shipping API will be retried automatically with a backoff, preventing order loss without manual intervention. This workflow is marked as `isDurable` to guarantee execution.</p>
+                                <div class="code-block">
+                                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                                    <pre><code class="language-javascript">// WORKFLOW DEFINITION
+{
+  "order.fulfillment.workflow": {
+    "isWorkflow": true,
+    "isDurable": true, // Ensures reliability through P2P state persistence.
+    "pre": [
+      {
+        "service": "shipping-api-rest",
+        "method": "POST",
+        "path": "/v1/labels",
+        "bodyMapping": { "orderId": "args.orderId", "address": "args.shippingAddress" },
+        // If the shipping API is down, retry 5 times over ~25 minutes.
+        "retryPolicy": { "attempts": 5, "delaySeconds": 300 },
+        "assign": { "shippingInfo": "" }
+      },
+      {
+        "service": "inventory-gql",
+        "operation": "mutation",
+        "field": "decrementStock",
+        "argsMapping": { "items": "args.items" }
+      },
+      {
+        "service": "email-api-rest",
+        "method": "POST",
+        "path": "/v2/send-email",
+        "bodyMapping": {
+            "template_id": "order-shipped-template",
+            "recipient": "args.customerEmail",
+            "trackingNumber": "shippingInfo.trackingNumber"
+        }
+      }
+    ]
+  }
+}
+
+// TRIGGERING THE WORKFLOW (from a `placeOrder` pipeline)
+{
+  "placeOrder": {
+    "post": [{ 
+        "callWorkflow": "order.fulfillment.workflow", // Triggers the durable workflow by name.
+        "argsMapping": { /* map order data to workflow context */ } 
+    }]
+  }
+}
+</code></pre>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="example-content" id="wf-inmemory">
+                            <h4 class="text-lg font-semibold text-gray-700 mb-3">Use Case: Lightweight, Fire-and-Forget Tasks</h4>
+                            <p class="mb-6 text-gray-600">In-memory workflows are ideal for tasks that should not block the client's response but do not require guaranteed execution. If the gateway restarts while one is in progress, it will be lost. This is acceptable for tasks like cache management or non-critical notifications.</p>
+                            
+                            <div class="mb-10">
+                                <h5 class="text-xl font-semibold mb-2">1. Social Media Fan-Out</h5>
+                                <p class="mb-4 text-gray-600">When a user makes a post, this workflow calls a fan-out service to populate follower feeds and an analytics service to track engagement. The `concurrent: true` flag on the calling step ensures the API returns instantly to the user.</p>
+                                <div class="code-block">
+                                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                                    <pre><code class="language-javascript">// WORKFLOW DEFINITION
+{
+  "post.fanout.workflow": {
+    "isWorkflow": true,
+    // "isDurable" is false by default, making it in-memory.
+    "pre": [
+      {
+        "service": "feed-fanout-rest",
+        "method": "POST",
+        "path": "/distribute",
+        "bodyMapping": { "postId": "args.postId", "authorId": "args.authorId" }
+      },
+      {
+        "service": "analytics-gql",
+        "field": "trackPostEngagement",
+        "argsMapping": { "postId": "args.postId" }
+      }
+    ]
+  }
+}
+
+// TRIGGERING THE WORKFLOW (from a `createPost` pipeline)
+{
+  "createPost": {
+    "post": [{ 
+      "callWorkflow": "post.fanout.workflow", 
+      "concurrent": true, // Ensures the API returns instantly.
+      "argsMapping": { /* map post data to workflow context */ } 
+    }]
+  }
+}
+</code></pre>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="example-content" id="wf-cron">
+                            <h4 class="text-lg font-semibold text-gray-700 mb-3">Use Case: Scheduled, Recurring Background Jobs</h4>
+                            <p class="mb-6 text-gray-600">Grapthway can run recurring jobs (like cron jobs) by combining an external scheduler with a durable workflow. This pattern separates the concern of *scheduling* (when to run) from *orchestration* (what to run), creating a robust and maintainable system for background tasks.</p>
+                            
+                            <div class="mb-10">
+                                <h5 class="text-xl font-semibold mb-2">1. Nightly Data Aggregation</h5>
+                                <p class="mb-4 text-gray-600">This job runs every night to aggregate sales and activity data into a daily report. The workflow is durable to ensure the report is always generated, even if a source service is temporarily unavailable.</p>
+                                <div class="code-block">
+                                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                                    <pre><code class="language-javascript">// 1. WORKFLOW DEFINITION (in orchestration-service)
+{
+  "reporting.daily-aggregation": {
+    "isWorkflow": true,
+    "isDurable": true,
+    "pre": [
+      {
+        "service": "sales-api-gql",
+        "field": "getDailySales",
+        "assign": { "salesData": "" },
+        "retryPolicy": { "attempts": 3, "delaySeconds": 60 }
+      },
+      {
+        "service": "activity-api-rest",
+        "method": "GET",
+        "path": "/daily-summary",
+        "assign": { "activityData": "" },
+        "retryPolicy": { "attempts": 3, "delaySeconds": 60 }
+      },
+      {
+        "service": "reporting-db-rest",
+        "method": "POST",
+        "path": "/save-daily-report",
+        "bodyMapping": {
+          "reportDate": "context.executionDate",
+          "sales": "salesData",
+          "activity": "activityData"
+        },
+        "retryPolicy": { "attempts": 5, "delaySeconds": 300 }
+      }
+    ]
+  }
+}
+
+// 2. TRIGGER PIPELINE (in a service, e.g., orchestration-service)
+// An empty mutation just to provide an entrypoint for the cron job.
+{
+  "triggerDailyAggregation": {
+    "post": [{
+      "callWorkflow": "reporting.daily-aggregation",
+      "argsMapping": { "executionDate": "args.date" }
+    }]
+  }
+}
+
+// 3. EXTERNAL SCHEDULER (e.g., a simple Node.js cron service)
+/*
+const cron = require('node-cron');
+const fetch = require('node-fetch');
+
+// Schedule to run every day at 2 AM.
+cron.schedule('0 2 * * *', () => {
+  fetch('http://grapthway:5000/graphql', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query: `mutation($date: String!) { triggerDailyAggregation(date: $date) }`,
+      variables: { date: new Date().toISOString() }
+    })
+  });
+});
+*/
+</code></pre>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                    
+                    <section id="dev-stitching" class="mb-24">
+                        <h2 class="text-3xl font-bold text-dark mb-8 section-title">GraphQL Schema Stitching</h2>
+                        <p class="mb-10 text-gray-600">Schema stitching allows you to extend types defined in one service with fields resolved by another, creating a rich, interconnected data graph. This feature is specific to GraphQL services.</p>
+                        
+                        <div class="diagram-container mb-10">
+                            <div class="mermaid">
+                                graph TD
+                                    subgraph "Unified Schema (in Gateway)"
+                                        C["type User { id: ID, name: String, orderHistory: [Order] }"]
+                                    end
+                                    
+                                    subgraph "user-service"
+                                        A["type User { id: ID, name: String }"]
+                                    end
+                                    
+                                    subgraph "order-service"
+                                        B["type Query { getOrdersByUserId(userId: ID!): [Order] }"]
+                                    end
+                                    
+                                    C -- Stitched from --> A;
+                                    C -- Extended with field resolved by --> B;
+                            </div>
+                        </div>
+
+                        <h3 class="text-2xl font-semibold text-dark mb-4">Example: Extending User with Order History</h3>
+                        <p class="mb-6 text-gray-600">Imagine your `user-service` defines the `User` type. You want to add an `orderHistory` field to it, but that data lives in the `order-service`. You can declare this relationship in the `order-service`'s `stitchingConfig`.</p>
+                        <div class="code-block mb-8">
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                            <pre><code class="language-javascript">// This configuration is sent in the `stitchingConfig` of the order-service's registration.
+"stitchingConfig": {
+  // We are extending the "User" type, which is defined in another service.
+  "User": {
+    // Add a new field called "orderHistory" to the User type in the unified schema.
+    "orderHistory": {
+      "service": "order-service", // This service (the order-service) will be responsible for resolving this new field.
+      "resolverField": "getOrdersByUserId", // To resolve it, the gateway should call the 'getOrdersByUserId' query.
+      // The resolver needs a 'userId' argument. We tell the gateway to get this value from the 'id' field of the parent User object.
+      "argsMapping": { "userId": "id" } 
+    }
+  }
+}</code></pre>
+                        </div>
+                    </section>
+
+                    <section id="dev-security" class="mb-24">
+                        <h2 class="text-3xl font-bold text-dark mb-8 section-title">Security Best Practices</h2>
+                        <p class="mb-6 text-gray-600">
+                            The most effective way to secure your entire architecture is to centralize authentication and authorization logic within a reusable, internal Grapthway workflow. This ensures consistent security policy application and simplifies your downstream microservices.
+                        </p>
+                        <p class="mb-6 text-gray-600">
+                            The recommended pattern is to create an <code>isInternal: true</code> workflow that validates a token (e.g., a JWT) and fetches user permissions. Any GraphQL mutation or REST endpoint can then be protected by simply adding a <code>callWorkflow</code> step to its <code>pre</code> pipeline.
+                        </p>
+                         <div class="code-block mb-8">
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                            <pre><code class="language-javascript">// By calling this workflow, the 'createProduct' mutation is automatically protected.
+// If the token is invalid or the rate limit is exceeded, the pipeline stops before
+// the downstream service is ever called.
+{
+  "createProduct": {
+    "pre": [
+      {
+        "callWorkflow": "auth.validate-and-get-user"
+      }
+    ]
+  }
+}
+</code></pre>
+                        </div>
+                    </section>
+                </div>
+                
+                <!-- ================================================================= -->
+                <!-- ==================== COMMON SECTION ============================= -->
+                <!-- ================================================================= -->
+                <div>
+                    <div class="text-center mb-12 mt-24">
+                        <h2 class="text-3xl font-bold text-dark inline-block px-8 py-3 bg-gray-200 text-gray-700 rounded-full">Common Reference</h2>
+                    </div>
+                    <section id="economic-layer" class="mb-24">
+                        <h2 class="text-3xl font-bold text-dark mb-8 section-title">The Economic Layer</h2>
+                        <p class="mb-6 text-gray-600">The Grapthway protocol includes a high-performance economic layer to create a sustainable, decentralized network. This system provides the incentive for individuals and organizations to run the node infrastructure that powers the network, secured by a Proof-of-Stake mechanism.</p>
+                        
+                        <h3 class="text-2xl font-semibold text-dark mt-10 mb-4">Grapthway Compute Units (GCU) & Staking</h3>
+                        <p class="mb-6 text-gray-600">
+                           The native currency of the network is the Grapthway Compute Unit (GCU). It is a utility token used exclusively to pay for services and for staking. Node operators must stake GCU proportional to their hardware capacity (specifically, CPU cores) to be eligible to join the network and earn rewards. This ensures that operators have a vested interest in the network's stability and performance.
+                        </p>
+
+                        <h3 class="text-2xl font-semibold text-dark mt-10 mb-4">High-Performance Ledger & Batch Aggregation</h3>
+                        <p class="mb-6 text-gray-600">To avoid the performance bottlenecks of traditional per-transaction ledgers, Grapthway uses an optimistic, high-throughput model:</p>
+                        <ol class="list-decimal list-inside space-y-3 text-gray-600 mb-8">
+                            <li><strong>Optimistic Debiting:</strong> When a `server` node processes a request, it optimistically assumes the developer has funds. It doesn't write to the ledger immediately. Instead, it places a `FeeInfo` object into a high-speed in-memory channel.</li>
+                            <li><strong>Local Aggregation:</strong> A dedicated `LedgerAggregator` goroutine collects these fee events from the channel. It aggregates debits per developer and rewards per node operator locally.</li>
+                            <li><strong>Pre-Flight Check & Penalty Box:</strong> Before committing a batch, the aggregator performs a single, efficient check against the ledger's live state for all involved developers. Any developer who lacks the funds to cover their aggregated debits for the period is placed in a `DeveloperPenaltyBox`, and their requests are immediately rejected by all nodes until their balance is refilled. Their invalid debits are removed from the batch.</li>
+                            <li><strong>Block-Level Batching:</strong> The block leader performs a second, more powerful aggregation. It deterministically combines all raw `Debit`, `Reward`, and `Transfer` transactions from the mempool into a highly compressed `BatchAggregationTransaction`. This single transaction settles thousands of individual economic events, dramatically increasing throughput and reducing network overhead.</li>
+                        </ol>
+                        <div class="tip-box mb-8">
+                            <p class="text-blue-800"><i class="fas fa-balance-scale mr-2"></i>This model provides the economic incentives of a traditional ledger while achieving the performance necessary for a high-traffic API gateway.</p>
+                        </div>
+                    </section>
+                    <section id="admin-dashboard" class="mb-24">
+                        <h2 class="text-3xl font-bold text-dark mb-8 section-title">The Admin Dashboard</h2>
+                        <p class="mb-6 text-lg text-gray-600">
+                           In a decentralized system, trust must be verifiable. Grapthway embeds this principle directly into its architecture with a comprehensive, locally-hosted Admin Dashboard. This powerful tool provides node operators and developers with an unprecedented level of real-time visibility and control over their interactions with the network, ensuring both transparency and privacy.
+                        </p>
+                         <p class="mb-8 text-lg text-gray-600">
+                           Access to the dashboard is not secured by traditional passwords, but by <strong class="text-dark">cryptographic signatures</strong>. Every action, from viewing logs to managing stake, requires authentication via the user's private key, guaranteeing that only the legitimate owner can access sensitive functions and information.
+                        </p>
+
+                        <h3 class="text-2xl font-semibold text-dark mt-10 mb-4">Key Dashboard Features</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="bg-white p-6 rounded-lg shadow">
+                                <h4 class="font-bold text-lg text-dark mb-2"><i class="fas fa-shield-alt text-blue-500 mr-2"></i>Secure, Signed Access</h4>
+                                <p>Authenticate with your private key. The dashboard distinguishes between a public view and two authenticated levels: 'User' for developers and 'Node Operator' (Admin) with full control.</p>
+                            </div>
+                             <div class="bg-white p-6 rounded-lg shadow">
+                                <h4 class="font-bold text-lg text-dark mb-2"><i class="fas fa-network-wired text-blue-500 mr-2"></i>Real-time Network Monitoring</h4>
+                                <p>View the live status of the node, its peer connections, and aggregated hardware statistics from across the entire network to verify the health and capacity of the protocol.</p>
+                            </div>
+                             <div class="bg-white p-6 rounded-lg shadow">
+                                <h4 class="font-bold text-lg text-dark mb-2"><i class="fas fa-wallet text-blue-500 mr-2"></i>Direct Ledger Interaction</h4>
+                                <p>From a single interface, view your GCU balance, transfer tokens, manage your universal stake pool (deposit/withdraw), and assign or unassign stake to specific nodes.</p>
+                            </div>
+                             <div class="bg-white p-6 rounded-lg shadow">
+                                <h4 class="font-bold text-lg text-dark mb-2"><i class="fas fa-clipboard-list text-blue-500 mr-2"></i>Comprehensive Log Auditing</h4>
+                                <p>Inspect detailed, request-by-request logs for Gateway traffic, Ledger events, Schema changes, and Admin actions with live streaming and historical search capabilities.</p>
+                            </div>
+                        </div>
+                    </section>
+                    <section id="api-reference" class="mb-24">
+                        <h2 class="text-3xl font-bold text-dark mb-8 section-title">API Reference</h2>
+                        <p class="mb-6 text-gray-600">This section provides a detailed reference for all HTTP endpoints exposed by a Grapthway node. It covers public, developer, and administrative APIs, including authentication requirements, request/response formats, and rate limiting information.</p>
+                        
+                        <h3 class="text-2xl font-semibold text-dark mt-10 mb-4">Authentication</h3>
+                        <p class="mb-6 text-gray-600">
+                           Grapthway uses a signature-based authentication scheme for all protected endpoints. There are two levels of access: <strong>User</strong> and <strong>Admin (Node Operator)</strong>.
+                        </p>
+                         <div class="danger-box mb-8">
+                            <p class="text-red-800"><i class="fas fa-exclamation-triangle mr-2"></i><strong>Signature Data is Critical:</strong> For `POST` or `PUT` requests, the signature must be generated from the raw, unmodified JSON request body. For `GET` requests, the signature is generated from the full request path including query parameters (e.g., `/api/v1/logs/gateway?max=10`). Any mismatch will result in a `403 Forbidden` error.</p>
+                        </div>
+
+                        <!-- API Reference Content will be injected here -->
+                        <div id="api-reference-content" class="space-y-12"></div>
+                    </section>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        mermaid.initialize({ startOnLoad: true, theme: 'base', themeVariables: { background: '#FFFFFF', primaryColor: '#F9FAFB', primaryTextColor: '#111827', lineColor: '#d1d5db', textColor: '#374151' }, securityLevel: 'loose' });
+        
+        function copyCode(button) {
+            const pre = button.parentElement.querySelector('pre');
+            const code = pre.querySelector('code');
+            navigator.clipboard.writeText(code.innerText).then(() => {
+                button.innerHTML = 'Copied!';
+                setTimeout(() => { button.innerHTML = 'Copy'; }, 2000);
+            });
+        }
+        
+        const sections = document.querySelectorAll('section');
+        const navLinks = document.querySelectorAll('.nav-link');
+        window.addEventListener('scroll', () => {
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                if (pageYOffset >= sectionTop - 150) {
+                    current = section.getAttribute('id');
+                }
+            });
+            navLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href') === '#' + current) {
+                    link.classList.add('active');
+                }
+            });
+        }, { passive: true });
+        
+        const setupTabs = (containerSelector) => {
+            const containers = document.querySelectorAll(containerSelector);
+            containers.forEach(container => {
+                const tabs = container.querySelectorAll('.example-tab');
+                const contents = container.querySelectorAll('.example-content');
+                
+                tabs.forEach(tab => {
+                    tab.addEventListener('click', () => {
+                        tabs.forEach(t => t.classList.remove('active'));
+                        contents.forEach(c => c.classList.remove('active'));
+
+                        tab.classList.add('active');
+                        const targetId = tab.getAttribute('data-target');
+                        const targetContent = container.querySelector('#' + targetId);
+                        if (targetContent) {
+                            targetContent.classList.add('active');
+                        }
+                    });
+                });
+            });
+        };
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            // Make the first nav link active on load
+            const firstNavLink = document.querySelector('.nav-link');
+            if(firstNavLink) {
+                firstNavLink.classList.add('active');
+            }
+
+            // API Reference Generation
+            generateApiReference();
+            
+            // Initialize all tab systems on the page
+            setupTabs('#dev-registration');
+            setupTabs('#dev-workflows');
+            document.querySelectorAll('.api-endpoint-examples').forEach(el => setupTabs(el));
+        });
+
+        function generateApiReference() {
+            const apiContainer = document.getElementById('api-reference-content');
+
+            const endpoints = [
+                // Public Endpoints
+                {
+                    group: 'Public Endpoints',
+                    id: 'public-gateway-status',
+                    method: 'GET',
+                    path: '/public/gateway-status',
+                    description: 'Provides detailed metrics about the node and the network state it is aware of, including peer count, total services, and uptime.',
+                    auth: 'None',
+                    params: [],
+                    responses: [
+                        { status: 200, description: 'Successful response with node status.', body: { uptime: "1m2.3s", node_id: "12D3Koo...", node_address: "0x...", peers: ["12D3Koo..."], total_services: 5, total_instances: 12, total_subgraphs: 3, total_pipelines: 8, storage_type: "decentralized (p2p/dht)" } }
+                    ]
+                },
+                {
+                    group: 'Public Endpoints',
+                    id: 'public-hardware-stats',
+                    method: 'GET',
+                    path: '/public/hardware-stats',
+                    description: 'Returns hardware statistics for the local node and an aggregated view of the entire network.',
+                    auth: 'None',
+                    params: [],
+                    responses: [
+                        { status: 200, description: 'Successful response with hardware stats.', body: { local: { /* ... */ }, global: { /* ... */ } } }
+                    ]
+                },
+                {
+                    group: 'Public Endpoints',
+                    id: 'public-wallet-balance',
+                    method: 'GET',
+                    path: '/public/wallet/balance',
+                    description: 'Checks the spendable GCU balance for a given wallet address.',
+                    auth: 'None',
+                    params: [{ name: 'address', type: 'string', required: true, description: 'The wallet address to check.' }],
+                    responses: [
+                        { status: 200, body: { balance: 1234.5678 } },
+                        { status: 404, body: { error: "Account not found" } }
+                    ]
+                },
+                {
+                    group: 'Public Endpoints',
+                    id: 'public-wallet-history',
+                    method: 'GET',
+                    path: '/public/wallet/history',
+                    description: 'Retrieves the transaction history for a given wallet address. Supports pagination and time-based filtering.',
+                    auth: 'None',
+                    params: [
+                        { name: 'address', type: 'string', required: true, description: 'The wallet address.' },
+                        { name: 'page', type: 'integer', required: false, description: 'Page number for pagination (default: 1).' },
+                        { name: 'limit', type: 'integer', required: false, description: 'Number of transactions per page (default: 10).' },
+                        { name: 'start', type: 'string', required: false, description: 'Start time for filtering (RFC3339 format).' },
+                        { name: 'end', type: 'string', required: false, description: 'End time for filtering (RFC3339 format).' }
+                    ],
+                    responses: [
+                        { status: 200, body: { transactions: [ { id: "tx-...", type: "TRANSFER", from: "0x...", to: "0x...", amount: 10.0, status: "Confirmed", /* ... */ } ], total: 1, totalPages: 1, currentPage: 1 } }
+                    ]
+                },
+                 {
+                    group: 'Public Endpoints',
+                    id: 'public-wallet-nonce',
+                    method: 'GET',
+                    path: '/public/wallet/nonce',
+                    description: 'Gets the next expected nonce for an account, required for sending transactions.',
+                    auth: 'None',
+                    params: [{ name: 'address', type: 'string', required: true, description: 'The wallet address to check.' }],
+                    responses: [
+                        { status: 200, body: { nonce: 42 } },
+                        { status: 404, body: { error: "Account not found" } }
+                    ]
+                },
+                 {
+                    group: 'Public Endpoints',
+                    id: 'public-staking-status',
+                    method: 'GET',
+                    path: '/public/staking/status',
+                    description: 'Retrieves detailed staking information for a wallet, including total stake, allocations to nodes, and funds in the unbonding period.',
+                    auth: 'None',
+                    params: [{ name: 'owner_address', type: 'string', required: true, description: 'The wallet address of the stake owner.' }],
+                    responses: [
+                        { status: 200, body: { totalStake: 10000.0, allocations: [{ nodePeerId: "12D3Koo...", amount: 5000.0, lockedAt: "..." }], unbonding: [{ amount: 100.0, unlockTime: "..." }] } }
+                    ]
+                },
+                {
+                    group: 'Public Endpoints',
+                    id: 'public-wallet-allowance',
+                    method: 'GET',
+                    path: '/public/wallet/allowance',
+                    description: 'Checks the current GCU allowance a spender has from an owner.',
+                    auth: 'None',
+                    params: [
+                        { name: 'owner', type: 'string', required: true, description: 'The address of the wallet owner.' },
+                        { name: 'spender', type: 'string', required: true, description: 'The address of the spender.' }
+                    ],
+                    responses: [ { status: 200, body: { owner: "0xowner...", spender: "0xspender...", allowance: 500.0 } } ]
+                },
+
+
+                // Developer Endpoints
+                {
+                    group: 'Developer API',
+                    id: 'dev-publish-config',
+                    method: 'POST',
+                    path: '/api/v1/publish-config',
+                    description: 'Publishes a new or updated service configuration to the network. The request must be signed, and the body contains the configuration which is also internally signed.',
+                    auth: 'User Signature',
+                    headers: [
+                        { name: 'X-Grapthway-Developer-ID', description: 'Your developer wallet address.'},
+                        { name: 'X-Grapthway-User-Address', description: 'Your developer wallet address.'},
+                        { name: 'X-Grapthway-User-PublicKey', description: 'Your hex-encoded public key.'},
+                        { name: 'X-Grapthway-User-Signature', description: 'Signature of the raw request body.'},
+                        { name: 'X-Grapthway-Config-Signature', description: 'Signature of the canonicalized config data (generated by the client tool).'}
+                    ],
+                    body: { service: "my-service", type: "graphql", schema: "type Query { hello: String }", /* ... */ },
+                    responses: [
+                        { status: 200, description: 'Configuration published successfully.', body: 'Configuration published successfully' },
+                        { status: 403, description: 'Invalid signature.'}
+                    ]
+                },
+                {
+                    group: 'Developer API',
+                    id: 'dev-wallet-transfer',
+                    method: 'POST',
+                    path: '/api/v1/wallet/transfer',
+                    description: "Transfers GCU from the signing user's wallet to another address.",
+                    auth: 'User Signature',
+                    headers: [ { name: 'X-Grapthway-User-Address', description: 'Your wallet address.'}, { name: 'X-Grapthway-User-PublicKey', description: 'Your hex-encoded public key.'}, { name: 'X-Grapthway-User-Signature', description: 'Signature of the raw request body.'} ],
+                    body: { to: "0xrecipient...", amount: 12.34, nonce: 43 },
+                    responses: [
+                        { status: 202, description: "Transfer accepted for processing.", body: { message: "Transfer accepted for processing", transactionId: "tx-...", assignedNonce: "43" }},
+                        { status: 400, description: "Transfer failed (e.g., insufficient funds).", body: { error: "Transfer failed: insufficient funds" }}
+                    ]
+                },
+                {
+                    group: 'Developer API',
+                    id: 'dev-allowance-set',
+                    method: 'POST',
+                    path: '/api/v1/wallet/allowance/set',
+                    description: "Sets or updates the amount of GCU a 'spender' is allowed to transfer on your behalf. This is crucial for pipeline payments.",
+                    auth: 'User Signature',
+                    headers: [ { name: 'X-Grapthway-User-Address', description: 'Your wallet address.'}, { name: 'X-Grapthway-User-PublicKey', description: 'Your hex-encoded public key.'}, { name: 'X-Grapthway-User-Signature', description: 'Signature of the raw request body.'} ],
+                    body: { spender: "0xpipeline-node-address...", amount: 500.0, nonce: 44 },
+                    responses: [ { status: 202, body: { message: "Allowance set transaction accepted", transactionId: "tx-..." }} ]
+                },
+                 {
+                    group: 'Developer API',
+                    id: 'dev-allowance-remove',
+                    method: 'POST',
+                    path: '/api/v1/wallet/allowance/remove',
+                    description: "Removes an allowance for a spender, setting it to 0.",
+                    auth: 'User Signature',
+                    headers: [ { name: 'X-Grapthway-User-Address', description: 'Your wallet address.'}, { name: 'X-Grapthway-User-PublicKey', description: 'Your hex-encoded public key.'}, { name: 'X-Grapthway-User-Signature', description: 'Signature of the raw request body.'} ],
+                    body: { spender: "0xpipeline-node-address...", nonce: 45 },
+                    responses: [ { status: 202, body: { message: "Remove allowance transaction accepted", transactionId: "tx-..." }} ]
+                },
+                {
+                    group: 'Developer API',
+                    id: 'dev-staking',
+                    method: 'POST',
+                    path: '/api/v1/staking/...',
+                    description: "A suite of endpoints for managing stake.",
+                    auth: 'User Signature',
+                    headers: [ { name: 'X-Grapthway-User-Address', description: 'Your wallet address.'}, { name: 'X-Grapthway-User-PublicKey', description: 'Your hex-encoded public key.'}, { name: 'X-Grapthway-User-Signature', description: 'Signature of the raw request body.'} ],
+                    subEndpoints: [
+                        { path: '/deposit', body: { amount: 1000.0, nonce: 46 }, description: 'Moves spendable GCU from your balance into your universal stake pool.' },
+                        { path: '/withdraw', body: { amount: 500.0, nonce: 47 }, description: 'Moves unallocated GCU from your stake pool back to your spendable balance.' },
+                        { path: '/assign', body: { nodePeerId: "12D3Koo...", amount: 2000.0, nonce: 48 }, description: 'Allocates a portion of your available stake to a specific node operator.' },
+                        { path: '/unassign', body: { nodePeerId: "12D3Koo...", nonce: 49 }, description: 'Begins the unbonding process for stake allocated to an offline node.' }
+                    ],
+                    responses: [ { status: 200, body: { message: "Stake transaction submitted successfully", transactionId: "tx-..." }} ]
+                },
+
+
+                // Admin Endpoints
+                {
+                    group: 'Admin API',
+                    id: 'admin-wallet-create',
+                    method: 'POST',
+                    path: '/admin/wallet/create',
+                    description: 'Creates a new cryptographic identity (wallet) on the network. The response contains a private key that should be stored securely.',
+                    auth: 'Node Operator Signature',
+                    headers: [
+                        { name: 'X-Grapthway-Admin-Address', description: "The node's own operator address." },
+                        { name: 'X-Grapthway-Admin-Signature', description: 'Signature of the admin address.' }
+                    ],
+                    responses: [
+                        { status: 200, body: { address: "0x...", publicKey: "04...", privateKey: "...", message: "Wallet created successfully..." } },
+                        { status: 403, description: 'Invalid signature.'}
+                    ]
+                },
+                 {
+                    group: 'Admin API',
+                    id: 'admin-logs-live',
+                    method: 'WS',
+                    path: '/admin/logs/live',
+                    description: 'Establishes a WebSocket connection for real-time streaming of all logs generated by the node. Requires an authentication message to be sent immediately after connection.',
+                    auth: 'Node Operator Signature (in WS message)',
+                    wsAuthMessage: { type: "auth", address: "YOUR_NODE_OPERATOR_ADDRESS", signature: "SIGNATURE_OF_ADDRESS" },
+                    responses: [
+                        { status: 'onmessage', description: 'Receives a continuous stream of JSON log entry objects.' }
+                    ]
+                },
+                 {
+                    group: 'Admin API',
+                    id: 'admin-logs-historical',
+                    method: 'GET',
+                    path: '/admin/logs/{log_type}',
+                    description: 'Retrieves historical logs for a specific type (gateway, schema, admin, ledger).',
+                    auth: 'Node Operator Signature',
+                     headers: [ { name: 'X-Grapthway-Admin-Address', description: "The node's own operator address." }, { name: 'X-Grapthway-Admin-Signature', description: 'Signature of the admin address.' } ],
+                    params: [
+                        { name: 'log_type', type: 'string', required: true, description: 'One of: `gateway`, `schema`, `admin`, `ledger`.' },
+                        { name: 'start', type: 'string', required: false, description: 'Start time for filtering (RFC3339 format).' },
+                    ],
+                    responses: [ { status: 200, body: [ { timestamp: "...", log_type: "gateway", /* ... */ } ] } ]
+                },
+                 {
+                    group: 'Admin API',
+                    id: 'admin-workflows-monitoring',
+                    method: 'GET',
+                    path: '/admin/workflows/monitoring',
+                    description: 'Retrieves the state of all durable workflow instances known to this node, including active and historical ones from the DHT.',
+                    auth: 'Node Operator Signature',
+                    headers: [ { name: 'X-Grapthway-Admin-Address', description: "The node's own operator address." }, { name: 'X-Grapthway-Admin-Signature', description: 'Signature of the admin address.' } ],
+                    params: [
+                        { name: 'workflowName', type: 'string', required: false, description: 'Filter by workflow name (contains).'},
+                        { name: 'status', type: 'string', required: false, description: 'Filter by status (`RUNNING`, `COMPLETED`, `FAILED`).'},
+                    ],
+                    responses: [ { status: 200, body: [ { id: "uuid...", workflowName: "...", status: "RUNNING", /* ... */ } ] } ]
+                },
+            ];
+
+            let currentGroup = '';
+            endpoints.forEach(ep => {
+                if (ep.group !== currentGroup) {
+                    currentGroup = ep.group;
+                    apiContainer.innerHTML += `<h3 class="text-2xl font-semibold text-dark mt-10 mb-4">${currentGroup}</h3>`;
+                }
+                apiContainer.innerHTML += renderApiEndpoint(ep);
+            });
+        }
+        
+        function renderApiEndpoint(ep) {
+            const methodColors = { GET: 'method-get', POST: 'method-post', WS: 'method-ws' };
+            let html = `<div id="api-${ep.id}" class="bg-white rounded-lg border shadow-md p-6">
+                <h4 class="text-lg font-bold text-gray-800 mb-2">
+                    <span class="method ${methodColors[ep.method]}">${ep.method}</span>
+                    <span class="font-mono ml-2">${ep.path}</span>
+                </h4>
+                <p class="mb-4 text-gray-600">${ep.description}</p>
+                <div class="text-sm mb-4"><strong>Authentication:</strong> <span class="font-mono bg-gray-100 p-1 rounded-md text-gray-700">${ep.auth}</span></div>`;
+
+            if (ep.headers) {
+                html += `
+                <h5 class="font-semibold text-gray-700 mb-2">Required Headers</h5>
+                <table class="api-table">
+                    <thead><tr><th>Header</th><th>Description</th></tr></thead>
+                    <tbody>${ep.headers.map(h => `<tr><td class="font-mono">${h.name}</td><td>${h.description}</td></tr>`).join('')}</tbody>
+                </table>`;
+            }
+
+            if (ep.params && ep.params.length > 0) {
+                html += `
+                <h5 class="font-semibold text-gray-700 mb-2">URL Parameters</h5>
+                <table class="api-table">
+                    <thead><tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+                    <tbody>${ep.params.map(p => `<tr><td class="font-mono">${p.name}</td><td>${p.type}</td><td>${p.required ? 'Yes' : 'No'}</td><td>${p.description}</td></tr>`).join('')}</tbody>
+                </table>`;
+            }
+
+            if (ep.body || ep.subEndpoints || ep.wsAuthMessage) {
+                html += `<div class="api-endpoint-examples">
+                    <div class="example-tabs">
+                        <div class="example-tab active" data-target="${ep.id}-body">Request Body</div>
+                        <div class="example-tab" data-target="${ep.id}-curl">cURL Example</div>
+                        <div class="example-tab" data-target="${ep.id}-js">JS Example</div>
+                    </div>`;
+
+                 // Request Body Content
+                let bodyContent = '';
+                if(ep.subEndpoints) {
+                    bodyContent = ep.subEndpoints.map(sub => `
+                        <div class="my-4 p-4 border rounded-md bg-gray-50">
+                            <p class="font-semibold font-mono text-gray-700">${ep.method} /api/v1/staking${sub.path}</p>
+                            <p class="text-sm text-gray-600 my-2">${sub.description}</p>
+                            <pre class="!bg-gray-200 !text-gray-800 !p-3"><code class="language-json">${JSON.stringify(sub.body, null, 2)}</code></pre>
+                        </div>
+                    `).join('');
+                } else if (ep.body) {
+                    bodyContent = `<pre><code class="language-json">${JSON.stringify(ep.body, null, 2)}</code></pre>`;
+                } else if (ep.wsAuthMessage) {
+                     bodyContent = `<p class="text-sm text-gray-600 mb-2">After connecting, send this JSON message to authenticate:</p><pre><code class="language-json">${JSON.stringify(ep.wsAuthMessage, null, 2)}</code></pre>`;
+                }
+
+                html += `<div class="example-content active" id="${ep.id}-body">${bodyContent}</div>`;
+                
+                // cURL Example
+                let curlExample = `curl -X ${ep.method} 'http://localhost:5000${ep.path}'`;
+                if(ep.headers) {
+                    ep.headers.forEach(h => {
+                        curlExample += ` \\\n  -H '${h.name}: ...'`;
+                    });
+                }
+                if(ep.body) {
+                     curlExample += ` \\\n  -H 'Content-Type: application/json' \\\n  --data-raw '${JSON.stringify(ep.body)}'`;
+                }
+
+                html += `<div class="example-content" id="${ep.id}-curl"><pre><code class="language-bash">${curlExample}</code></pre></div>`;
+
+                // JS Example
+                let jsExample = `const url = 'http://localhost:5000${ep.path}';\nconst options = {\n  method: '${ep.method}',\n  headers: {\n    'Content-Type': 'application/json',`;
+                 if(ep.headers) {
+                    ep.headers.forEach(h => {
+                        jsExample += `\n    '${h.name}': '...',`;
+                    });
+                }
+                jsExample += `\n  }`;
+                if(ep.body) {
+                    jsExample += `,\n  body: JSON.stringify(${JSON.stringify(ep.body, null, 2)})`;
+                }
+                jsExample += `\n};`
+
+                html += `<div class="example-content" id="${ep.id}-js"><pre><code class="language-javascript">${jsExample}</code></pre></div>`;
+
+
+                html += `</div>`;
+            }
+
+            if (ep.responses && ep.responses.length > 0) {
+                 html += `
+                <h5 class="font-semibold text-gray-700 mt-6 mb-2">Responses</h5>
+                <div>${ep.responses.map(r => `
+                    <div class="mb-4">
+                        <p class="font-semibold text-sm">
+                            <span class="font-mono px-2 py-1 rounded-md ${r.status >= 400 ? 'bg-red-100 text-red-700' : (r.status === 'onmessage' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700')}">${r.status}</span>
+                            <span class="ml-2 text-gray-600">${r.description || ''}</span>
+                        </p>
+                        ${r.body ? `<pre class="!mt-2 !text-sm"><code class="language-json">${typeof r.body === 'string' ? r.body : JSON.stringify(r.body, null, 2)}</code></pre>` : ''}
+                    </div>
+                `).join('')}</div>`;
+            }
+
+            html += `</div>`;
+            return html;
+        }
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,1463 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grapthway - High-Throughput Load & Accuracy Tester</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/elliptic/6.5.4/elliptic.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        :root {
+            --primary: #0ea5e9; --secondary: #059669; --dark: #0f172a;
+            --light: #f8fafc; --gray: #64748b; --danger: #dc2626; --warning: #d97706;
+            --accent: #7c3aed; --neutral: #475569;
+        }
+        html { scroll-behavior: smooth; }
+        body { 
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+        }
+        .log-entry {
+            padding: 8px 12px;
+            border-radius: 8px;
+            margin-bottom: 6px;
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+            font-size: 0.875rem;
+            white-space: pre-wrap;
+            word-break: break-all;
+            border-left: 3px solid transparent;
+        }
+        .log-info { 
+            background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); 
+            color: #1e40af; 
+            border-left-color: #3b82f6;
+        }
+        .log-success { 
+            background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%); 
+            color: #166534; 
+            border-left-color: #10b981;
+        }
+        .log-error { 
+            background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); 
+            color: #991b1b; 
+            border-left-color: #ef4444;
+        }
+        .log-warn { 
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); 
+            color: #92400e; 
+            border-left-color: #f59e0b;
+        }
+        .log-debug { 
+            background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%); 
+            color: #475569; 
+            border-left-color: #64748b;
+        }
+        .btn-disabled { cursor: not-allowed; opacity: 0.6; }
+        .validation-ok { 
+            border-left: 4px solid var(--secondary); 
+            background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+        }
+        .validation-fail { 
+            border-left: 4px solid var(--danger); 
+            background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+        }
+        .validation-container {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1.5rem;
+        }
+        .progress-bar {
+            height: 8px;
+            background: linear-gradient(90deg, #e2e8f0 0%, #cbd5e1 100%);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 6px;
+            box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #0ea5e9 0%, #0284c7 100%);
+            transition: width 0.4s ease;
+            box-shadow: 0 0 10px rgba(14, 165, 233, 0.4);
+        }
+        .card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            padding: 2rem;
+            border: 1px solid rgba(226, 232, 240, 0.6);
+            backdrop-filter: blur(10px);
+        }
+        .advanced-toggle {
+            cursor: pointer;
+            user-select: none;
+            padding: 12px 16px;
+            background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+            border-radius: 12px;
+            border: 1px solid #cbd5e1;
+            transition: all 0.3s ease;
+        }
+        .advanced-toggle:hover {
+            background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
+            transform: translateY(-1px);
+        }
+        .advanced-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s ease-out, padding 0.4s ease-out;
+            padding: 0 16px;
+        }
+        .advanced-content.expanded {
+            max-height: 950px; /* Increased height for new options */
+            padding: 16px;
+        }
+        .stat-card {
+            background: linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(248,250,252,0.9) 100%);
+            border: 1px solid rgba(226, 232, 240, 0.8);
+            border-radius: 12px;
+            padding: 1rem;
+            backdrop-filter: blur(5px);
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 14px 0 rgba(14, 165, 233, 0.3);
+        }
+        .btn-primary:hover:not(.btn-disabled) {
+            background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px 0 rgba(14, 165, 233, 0.4);
+        }
+        .btn-success {
+            background: linear-gradient(135deg, #059669 0%, #047857 100%);
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 14px 0 rgba(5, 150, 105, 0.3);
+        }
+        .btn-success:hover:not(.btn-disabled) {
+            background: linear-gradient(135deg, #047857 0%, #065f46 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px 0 rgba(5, 150, 105, 0.4);
+        }
+        .btn-danger {
+            background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 14px 0 rgba(220, 38, 38, 0.3);
+        }
+        .btn-danger:hover:not(.btn-disabled) {
+            background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px 0 rgba(220, 38, 38, 0.4);
+        }
+        .input-field {
+            background: rgba(255, 255, 255, 0.8);
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            transition: all 0.3s ease;
+        }
+        .input-field:focus {
+            border-color: #0ea5e9;
+            box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+            background: rgba(255, 255, 255, 0.95);
+        }
+        .header-gradient {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+            color: white;
+            padding: 3rem 0;
+            margin-bottom: 3rem;
+            border-radius: 0 0 32px 32px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+        /* Styles for PDF generation/print */
+        @media print {
+            body, html {
+                background: white;
+                color: black;
+                font-size: 10pt;
+            }
+            .no-print {
+                display: none !important;
+            }
+            .card, .stat-card {
+                box-shadow: none;
+                border: 1px solid #ccc;
+                border-radius: 0;
+                padding: 1rem;
+                background: white;
+                break-inside: avoid;
+            }
+            .header-gradient {
+                display: none;
+            }
+            .container {
+                max-width: 100% !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+            .grid {
+                grid-template-columns: 1fr !important;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+<div class="header-gradient no-print">
+    <div class="container mx-auto px-4">
+        <header class="text-center">
+            <h1 class="text-5xl font-extrabold tracking-tight mb-4">
+                <i data-lucide="zap" class="inline-block w-12 h-12 mr-3 text-sky-400"></i> 
+                Grapthway Load Tester
+            </h1>
+            <p class="text-xl text-slate-300">Professional-grade multi-node performance and accuracy testing platform</p>
+        </header>
+    </div>
+</div>
+
+<div class="container mx-auto px-4 pb-8" id="report-content">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <!-- Controls Column -->
+        <div class="lg:col-span-1 space-y-6">
+            <div class="card no-print">
+                <h3 class="text-xl font-bold text-dark mb-6 flex items-center">
+                    <i data-lucide="settings-2" class="w-7 h-7 mr-3 text-primary"></i> 
+                    Configuration
+                </h3>
+                <div class="space-y-4">
+                    <div>
+                        <label for="node-urls" class="block text-sm font-semibold text-slate-700 mb-2">Node URLs (comma-separated)</label>
+                        <textarea id="node-urls" rows="2" class="input-field mt-1 block w-full px-4 py-3 shadow-sm placeholder-slate-400 focus:outline-none">http://localhost:5001, http://localhost:5002, http://localhost:5003</textarea>
+                    </div>
+                    <div>
+                        <label for="private-key" class="block text-sm font-semibold text-slate-700 mb-2">Main Wallet Private Key</label>
+                        <input type="password" id="private-key" value="1bf13119179b8d8a224cf04ab9636157881a4842c1dd064a40bec6d2417cd461" class="input-field mt-1 block w-full px-4 py-3 shadow-sm placeholder-slate-400 focus:outline-none">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label for="num-wallets" class="block text-sm font-semibold text-slate-700 mb-2">Wallets Count</label>
+                            <input type="number" id="num-wallets" value="100" min="1" class="input-field mt-1 block w-full px-4 py-3 shadow-sm focus:outline-none">
+                        </div>
+                        <div>
+                            <label for="concurrency-per-node" class="block text-sm font-semibold text-slate-700 mb-2">Workers/Node</label>
+                            <input type="number" id="concurrency-per-node" value="50" min="1" class="input-field mt-1 block w-full px-4 py-3 shadow-sm focus:outline-none">
+                        </div>
+                    </div>
+                    
+                    <div class="advanced-toggle" onclick="toggleAdvanced()">
+                        <div class="flex items-center text-sm font-semibold text-slate-700">
+                            <i data-lucide="sliders-horizontal" class="w-5 h-5 mr-2 text-primary"></i>
+                            Advanced Configuration
+                            <i data-lucide="chevron-down" class="w-4 h-4 ml-auto transform transition-transform" id="advanced-chevron"></i>
+                        </div>
+                    </div>
+                    
+                    <div class="advanced-content" id="advanced-controls">
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Node Assignment Strategy</label>
+                                <div class="flex items-center space-x-4">
+                                    <label class="flex items-center">
+                                        <input type="radio" name="node-strategy" id="strategy-distribute" value="distribute" class="form-radio h-4 w-4 text-sky-600" checked>
+                                        <span class="ml-2 text-sm text-gray-700">Distribute</span>
+                                    </label>
+                                    <label class="flex items-center">
+                                        <input type="radio" name="node-strategy" id="strategy-random" value="random" class="form-radio h-4 w-4 text-sky-600">
+                                        <span class="ml-2 text-sm text-gray-700">Random</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div id="node-distribution-container" class="space-y-2 pt-2 border-t border-slate-200">
+                                <!-- Dynamic content will be injected here -->
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-4 pt-2 border-t border-slate-200">
+                                <div>
+                                    <label for="tps-per-worker" class="block text-sm font-medium text-gray-700">TPS per Worker</label>
+                                    <input type="number" id="tps-per-worker" value="2" min="1" class="input-field mt-1 block w-full px-3 py-2 shadow-sm focus:outline-none">
+                                </div>
+                                <div>
+                                    <label for="test-duration" class="block text-sm font-medium text-gray-700">Test Duration (s)</label>
+                                    <input type="number" id="test-duration" value="0" min="0" class="input-field mt-1 block w-full px-3 py-2 shadow-sm focus:outline-none">
+                                    <p class="text-xs text-slate-500 mt-1">0 for unlimited</p>
+                                </div>
+                            </div>
+                        
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label for="max-concurrent-requests" class="block text-sm font-medium text-gray-700">Max Concurrent</label>
+                                    <input type="number" id="max-concurrent-requests" value="450" min="1" class="input-field mt-1 block w-full px-3 py-2 shadow-sm focus:outline-none">
+                                </div>
+                                <div>
+                                    <label for="validation-wallets-per-batch" class="block text-sm font-medium text-gray-700">Validation Batch Size</label>
+                                    <input type="number" id="validation-wallets-per-batch" value="50" min="1" class="input-field mt-1 block w-full px-3 py-2 shadow-sm focus:outline-none">
+                                </div>
+                            </div>
+                            <div>
+                                <label for="validation-batch-interval" class="block text-sm font-medium text-gray-700">Validation Interval (ms)</label>
+                                <input type="number" id="validation-batch-interval" value="1000" min="100" class="input-field mt-1 block w-full px-3 py-2 shadow-sm focus:outline-none">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card no-print">
+                <h3 class="text-xl font-bold text-dark mb-6 flex items-center">
+                    <i data-lucide="play-circle" class="w-7 h-7 mr-3 text-primary"></i> 
+                    Test Execution
+                </h3>
+                <div class="space-y-4">
+                    <button id="setup-btn" class="w-full btn-primary text-white font-bold py-4 px-6 rounded-xl focus:outline-none focus:ring-4 focus:ring-sky-200 transition-all flex items-center justify-center">
+                        <i data-lucide="users" class="w-5 h-5 mr-3"></i> 1. Setup & Fund Wallets
+                    </button>
+                    <button id="start-btn" class="w-full btn-success text-white font-bold py-4 px-6 rounded-xl focus:outline-none focus:ring-4 focus:ring-emerald-200 transition-all flex items-center justify-center btn-disabled">
+                        <i data-lucide="send" class="w-5 h-5 mr-3"></i> 2. Start Load Test
+                    </button>
+                    <button id="stop-btn" class="w-full btn-danger text-white font-bold py-4 px-6 rounded-xl focus:outline-none focus:ring-4 focus:ring-red-200 transition-all flex items-center justify-center btn-disabled">
+                        <i data-lucide="stop-circle" class="w-5 h-5 mr-3"></i> Stop Test
+                    </button>
+                </div>
+            </div>
+
+            <div class="card no-print">
+                <h3 class="text-xl font-bold text-dark mb-6 flex items-center">
+                    <i data-lucide="wallet" class="w-7 h-7 mr-3 text-primary"></i> 
+                    Wallet Management
+                </h3>
+                <div class="space-y-4">
+                    <div>
+                        <label for="import-wallets-input" class="w-full bg-gradient-to-r from-slate-100 to-slate-200 text-slate-700 font-semibold py-3 px-4 rounded-xl hover:from-slate-200 hover:to-slate-300 focus:outline-none focus:ring-4 focus:ring-slate-200 transition-all flex items-center justify-center cursor-pointer">
+                            <i data-lucide="upload-cloud" class="w-5 h-5 mr-2"></i> Import Wallets (.json)
+                        </label>
+                        <input type="file" id="import-wallets-input" class="hidden" accept=".json">
+                    </div>
+                    <button id="export-wallets-btn" class="w-full bg-gradient-to-r from-slate-100 to-slate-200 text-slate-700 font-semibold py-3 px-4 rounded-xl hover:from-slate-200 hover:to-slate-300 focus:outline-none focus:ring-4 focus:ring-slate-200 transition-all flex items-center justify-center btn-disabled">
+                        <i data-lucide="download-cloud" class="w-5 h-5 mr-2"></i> Export Wallets
+                    </button>
+
+                    <div class="pt-3">
+                        <div class="relative">
+                            <div class="absolute inset-0 flex items-center" aria-hidden="true">
+                                <div class="w-full border-t border-slate-300"></div>
+                            </div>
+                            <div class="relative flex justify-center">
+                                <span class="bg-white px-3 text-sm font-medium text-slate-500">Wallet Actions</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-3 gap-2 items-center">
+                        <input type="number" id="refuel-amount-input" value="100" min="1" class="input-field col-span-1 block w-full px-3 py-2 focus:outline-none">
+                        <button id="refuel-wallets-btn" class="col-span-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-semibold py-2 px-4 rounded-xl hover:from-blue-600 hover:to-blue-700 transition-all flex items-center justify-center btn-disabled">
+                            <i data-lucide="fuel" class="w-4 h-4 mr-2"></i> Refuel Wallets
+                        </button>
+                    </div>
+
+                    <button id="refund-wallets-btn" class="w-full bg-gradient-to-r from-amber-500 to-amber-600 text-white font-semibold py-3 px-4 rounded-xl hover:from-amber-600 hover:to-amber-700 focus:outline-none focus:ring-4 focus:ring-amber-200 transition-all flex items-center justify-center btn-disabled">
+                        <i data-lucide="arrow-left-circle" class="w-5 h-5 mr-2"></i> Refund All Wallets
+                    </button>
+                </div>
+            </div>
+
+             <div class="card">
+                <h3 class="text-xl font-bold text-dark mb-6 flex items-center">
+                    <i data-lucide="list-checks" class="w-7 h-7 mr-3 text-accent"></i>
+                    Ledger Integrity
+                </h3>
+                <div id="balance-audit-container">
+                     <button id="start-audit-btn" class="w-full bg-gradient-to-r from-violet-500 to-violet-600 text-white font-semibold py-3 px-4 rounded-xl hover:from-violet-600 hover:to-violet-700 focus:outline-none focus:ring-4 focus:ring-violet-200 transition-all flex items-center justify-center btn-disabled no-print">
+                        <i data-lucide="play" class="w-5 h-5 mr-2"></i> Start Balance Audit
+                    </button>
+                     <button id="stop-audit-btn" class="hidden w-full mt-2 bg-gradient-to-r from-red-500 to-red-600 text-white font-semibold py-3 px-4 rounded-xl hover:from-red-600 hover:to-red-700 focus:outline-none focus:ring-4 focus:ring-red-200 transition-all items-center justify-center no-print">
+                        <i data-lucide="stop-circle" class="w-5 h-5 mr-2"></i> Stop Audit
+                    </button>
+                    <div id="audit-summary" class="mt-4">
+                        <p class="text-sm text-slate-500">Run an audit after the test to verify balance consistency.</p>
+                         <div id="audit-progress" class="progress-bar mt-2 hidden">
+                            <div id="audit-progress-fill" class="progress-fill bg-violet-500" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card no-print">
+                <h3 class="text-xl font-bold text-dark mb-6 flex items-center">
+                    <i data-lucide="file-text" class="w-7 h-7 mr-3 text-primary"></i> 
+                    Reporting
+                </h3>
+                <button id="generate-pdf-btn" class="w-full bg-gradient-to-r from-slate-600 to-slate-700 text-white font-semibold py-3 px-4 rounded-xl hover:from-slate-700 hover:to-slate-800 focus:outline-none focus:ring-4 focus:ring-slate-300 transition-all flex items-center justify-center">
+                    <i data-lucide="printer" class="w-5 h-5 mr-2"></i> Generate PDF Report
+                </button>
+            </div>
+        </div>
+
+        <!-- Log & Validation Column -->
+        <div class="lg:col-span-2 space-y-6">
+            <div id="stats-container" class="card">
+                 <h3 class="text-xl font-bold text-dark mb-6 flex items-center">
+                    <i data-lucide="bar-chart-3" class="w-7 h-7 mr-3 text-primary"></i> 
+                    Live Statistics
+                </h3>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="text-sm font-medium text-slate-600 mb-1">Total Sent</div>
+                        <div id="transfers-sent" class="text-2xl font-bold text-slate-800">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="text-sm font-medium text-slate-600 mb-1">Successful</div>
+                        <div id="transfers-ok" class="text-2xl font-bold text-emerald-600">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="text-sm font-medium text-slate-600 mb-1">Failed</div>
+                        <div id="transfers-fail" class="text-2xl font-bold text-red-600">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="text-sm font-medium text-slate-600 mb-1">TPS (avg)</div>
+                        <div id="tps" class="text-2xl font-bold text-blue-600">0.0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="text-sm font-medium text-slate-600 mb-1">Workers</div>
+                        <div id="active-workers" class="text-2xl font-bold text-purple-600">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="text-sm font-medium text-slate-600 mb-1">Concurrent</div>
+                        <div id="concurrent-requests" class="text-2xl font-bold text-indigo-600">0 / 450</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-xl font-bold text-dark flex items-center">
+                        <i data-lucide="shield-check" class="w-7 h-7 mr-3 text-secondary"></i> 
+                        State Validation
+                    </h3>
+                    <div class="flex items-center gap-3 no-print">
+                        <button id="start-validation-btn" class="bg-emerald-100 text-emerald-700 font-semibold px-4 py-2 rounded-lg hover:bg-emerald-200 btn-disabled flex items-center gap-2 transition-all">
+                            <i data-lucide="play" class="w-4 h-4"></i>Start
+                        </button>
+                        <button id="stop-validation-btn" class="bg-red-100 text-red-700 font-semibold px-4 py-2 rounded-lg hover:bg-red-200 btn-disabled flex items-center gap-2 transition-all">
+                            <i data-lucide="stop-circle" class="w-4 h-4"></i>Stop
+                        </button>
+                    </div>
+                </div>
+                <div id="validation-summary" class="mb-6">
+                    <span id="validation-status" class="text-sm font-semibold text-slate-500">Validation not running.</span>
+                    <div id="validation-progress" class="progress-bar mt-2 hidden">
+                        <div id="validation-progress-fill" class="progress-fill" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="validation-container">
+                    <div>
+                        <h4 id="inconsistent-header" class="font-bold text-red-600 mb-3 text-lg">Inconsistent Wallets (0)</h4>
+                        <div id="inconsistent-wallets" class="bg-slate-50 border border-slate-200 rounded-xl h-[180px] overflow-y-auto p-4 space-y-3"></div>
+                    </div>
+                    <div>
+                        <h4 id="consistent-header" class="font-bold text-emerald-600 mb-3 text-lg">Consistent Wallets (0)</h4>
+                        <div id="consistent-wallets" class="bg-slate-50 border border-slate-200 rounded-xl h-[180px] overflow-y-auto p-4 space-y-3"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-xl font-bold text-dark flex items-center">
+                        <i data-lucide="terminal" class="w-7 h-7 mr-3 text-primary"></i> 
+                        Live Log
+                    </h3>
+                    <button id="clear-log-btn" class="text-slate-500 hover:text-red-600 flex items-center font-medium transition-colors no-print">
+                        <i data-lucide="trash-2" class="w-4 h-4 mr-1"></i>Clear Log
+                    </button>
+                </div>
+                <div id="log-container" class="bg-slate-50 border border-slate-200 rounded-xl h-[280px] overflow-y-auto p-4">
+                    <div class="log-entry log-info">System initialized. Configure your nodes and start testing.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="confirm-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center hidden z-50 no-print">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+        <h3 id="confirm-modal-title" class="text-lg font-bold text-slate-800 mb-4">Confirm Action</h3>
+        <p id="confirm-modal-text" class="text-slate-600 mb-6">Are you sure?</p>
+        <div class="flex justify-end space-x-3">
+            <button id="confirm-modal-cancel" class="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300">Cancel</button>
+            <button id="confirm-modal-ok" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Confirm</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Toggle advanced controls
+    function toggleAdvanced() {
+        const advancedControls = document.getElementById('advanced-controls');
+        const chevron = document.getElementById('advanced-chevron');
+        
+        advancedControls.classList.toggle('expanded');
+        
+        if (advancedControls.classList.contains('expanded')) {
+            chevron.classList.add('rotate-180');
+        } else {
+            chevron.classList.remove('rotate-180');
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        lucide.createIcons();
+
+        // DOM Elements
+        const nodeUrlsInput = document.getElementById('node-urls');
+        const privateKeyInput = document.getElementById('private-key');
+        const numWalletsInput = document.getElementById('num-wallets');
+        const concurrencyPerNodeInput = document.getElementById('concurrency-per-node');
+        const tpsPerWorkerInput = document.getElementById('tps-per-worker');
+        const testDurationInput = document.getElementById('test-duration');
+        const maxConcurrentRequestsInput = document.getElementById('max-concurrent-requests');
+        const validationWalletsPerBatchInput = document.getElementById('validation-wallets-per-batch');
+        const validationBatchIntervalInput = document.getElementById('validation-batch-interval');
+        const setupBtn = document.getElementById('setup-btn');
+        const startBtn = document.getElementById('start-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const startValidationBtn = document.getElementById('start-validation-btn');
+        const stopValidationBtn = document.getElementById('stop-validation-btn');
+        const clearLogBtn = document.getElementById('clear-log-btn');
+        const logContainer = document.getElementById('log-container');
+        const statsContainer = document.getElementById('stats-container');
+        const inconsistentWalletsContainer = document.getElementById('inconsistent-wallets');
+        const consistentWalletsContainer = document.getElementById('consistent-wallets');
+        const inconsistentHeader = document.getElementById('inconsistent-header');
+        const consistentHeader = document.getElementById('consistent-header');
+        const validationStatusEl = document.getElementById('validation-status');
+        const validationProgressBar = document.getElementById('validation-progress');
+        const validationProgressFill = document.getElementById('validation-progress-fill');
+        const transfersSentEl = document.getElementById('transfers-sent');
+        const transfersOkEl = document.getElementById('transfers-ok');
+        const transfersFailEl = document.getElementById('transfers-fail');
+        const tpsEl = document.getElementById('tps');
+        const activeWorkersEl = document.getElementById('active-workers');
+        const concurrentRequestsEl = document.getElementById('concurrent-requests');
+        const startAuditBtn = document.getElementById('start-audit-btn');
+        const stopAuditBtn = document.getElementById('stop-audit-btn');
+        const auditSummaryContainer = document.getElementById('audit-summary');
+        const auditProgressBar = document.getElementById('audit-progress');
+        const auditProgressFill = document.getElementById('audit-progress-fill');
+        const generatePdfBtn = document.getElementById('generate-pdf-btn');
+        const nodeDistributionContainer = document.getElementById('node-distribution-container');
+        const importWalletsInput = document.getElementById('import-wallets-input');
+        const exportWalletsBtn = document.getElementById('export-wallets-btn');
+        const refundWalletsBtn = document.getElementById('refund-wallets-btn');
+        const refuelAmountInput = document.getElementById('refuel-amount-input');
+        const refuelWalletsBtn = document.getElementById('refuel-wallets-btn');
+        
+        // App State
+        let mainWallet = {};
+        let createdWallets = [];
+        let isTestRunning = false;
+        let isValidationRunning = false;
+        let isAuditRunning = false;
+        let testStartTime = 0;
+        let stats = { sent: 0, ok: 0, fail: 0 };
+        let allNodeUrls = [];
+        let validationInterval, auditInterval, testTimeout;
+        let validationIndex = 0, auditIndex = 0;
+        const ec = new elliptic.ec('secp256k1');
+        let workers = [];
+        let activeWorkersCount = 0;
+        let walletNonces = new Map(); 
+        let walletValidationState = {}; 
+        let concurrentRequestCounter = 0;
+        let maxConcurrentRequests = 450;
+        let requestQueue = [];
+        let initialBalances = new Map();
+        let walletLedger = new Map();
+        let auditResults = [];
+
+        // --- Confirm Modal ---
+        let confirmResolver = null;
+        const showConfirm = (title, text) => {
+            document.getElementById('confirm-modal-title').textContent = title;
+            document.getElementById('confirm-modal-text').textContent = text;
+            document.getElementById('confirm-modal').classList.remove('hidden');
+            return new Promise(resolve => {
+                confirmResolver = resolve;
+            });
+        };
+        document.getElementById('confirm-modal-cancel').addEventListener('click', () => {
+            document.getElementById('confirm-modal').classList.add('hidden');
+            if (confirmResolver) confirmResolver(false);
+        });
+        document.getElementById('confirm-modal-ok').addEventListener('click', () => {
+            document.getElementById('confirm-modal').classList.add('hidden');
+            if (confirmResolver) confirmResolver(true);
+        });
+
+        // --- Logging ---
+        const log = (message, type = 'info') => {
+            if (logContainer.childElementCount > 500) {
+                logContainer.removeChild(logContainer.firstChild);
+            }
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        };
+
+        clearLogBtn.addEventListener('click', () => {
+            logContainer.innerHTML = '';
+            log('Logs cleared.', 'warn');
+        });
+
+        // --- Request Queue Management ---
+        const processQueue = async () => {
+            if (requestQueue.length === 0 || concurrentRequestCounter >= maxConcurrentRequests) {
+                return;
+            }
+            const nextRequest = requestQueue.shift();
+            concurrentRequestCounter++;
+            concurrentRequestsEl.textContent = `${concurrentRequestCounter} / ${maxConcurrentRequests}`;
+            try {
+                const result = await nextRequest.task();
+                nextRequest.resolve(result);
+            } catch (error) {
+                nextRequest.reject(error);
+            } finally {
+                concurrentRequestCounter--;
+                concurrentRequestsEl.textContent = `${concurrentRequestCounter} / ${maxConcurrentRequests}`;
+                processQueue();
+            }
+        };
+
+        const queueRequest = (task) => {
+            return new Promise((resolve, reject) => {
+                requestQueue.push({ task, resolve, reject });
+                processQueue();
+            });
+        };
+
+        // --- Crypto & API Helpers ---
+        const getWalletDetails = async (privateKey) => {
+            try {
+                const key = ec.keyFromPrivate(privateKey, 'hex');
+                const pubKeyHex = key.getPublic('hex');
+                const pubKeyBytesWithPrefix = new Uint8Array(pubKeyHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+                const pubKeyBytes = pubKeyBytesWithPrefix.slice(1);
+                const hashBuffer = await window.crypto.subtle.digest('SHA-256', pubKeyBytes);
+                const hashArray = Array.from(new Uint8Array(hashBuffer));
+                const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+                const address = '0x' + hashHex.slice(-40);
+                return { key, address: address.toLowerCase(), publicKey: pubKeyHex };
+            } catch (e) {
+                log(`Invalid private key: ${e.message}`, 'error');
+                throw new Error("Invalid private key provided.");
+            }
+        };
+
+        const signRequest = async (key, dataToSign) => {
+            const hashBuffer = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(dataToSign));
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const signature = key.sign(hashArray);
+            return signature.toDER('hex');
+        };
+
+        const apiFetch = async (endpoint, options = {}) => {
+            const nodeUrl = options.nodeUrl;
+            if (!nodeUrl) throw new Error("apiFetch requires a specific nodeUrl");
+            const url = `${nodeUrl}${endpoint}`;
+            
+            return queueRequest(async () => {
+                try {
+                    const response = await fetch(url, {
+                        method: options.body ? 'POST' : 'GET',
+                        headers: options.headers || {},
+                        body: options.body ? JSON.stringify(options.body) : null,
+                    });
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        throw new Error(`HTTP ${response.status}: ${errorText}`);
+                    }
+                    const text = await response.text();
+                    return text ? JSON.parse(text) : {};
+                } catch (error) {
+                    throw error;
+                }
+            });
+        };
+        
+        const fetchBalanceForWallet = async (address, specificNodeUrl) => {
+             try {
+                const balanceData = await apiFetch(`/public/wallet/balance?address=${address}`, { nodeUrl: specificNodeUrl });
+                return balanceData.balance;
+            } catch (e) {
+                log(`Failed to fetch balance for ${address} from ${specificNodeUrl}: ${e.message}`, 'error');
+                return null;
+            }
+        };
+
+        const sendSimpleTransaction = async (senderWallet, payload, nodeUrl) => {
+            try {
+                const payloadString = JSON.stringify(payload);
+                const signature = await signRequest(senderWallet.key, payloadString);
+                const headers = {
+                    'X-Grapthway-User-Address': senderWallet.address,
+                    'X-Grapthway-User-PublicKey': senderWallet.publicKey,
+                    'X-Grapthway-User-Signature': signature,
+                    'X-Grapthway-Developer-ID': senderWallet.address,
+                    'Content-Type': 'application/json',
+                };
+                await apiFetch('/api/v1/wallet/transfer', { headers, body: payload, nodeUrl });
+            } catch (e) {
+                throw new Error(`Failed to submit transaction: ${e.message}`);
+            }
+        };
+
+        // --- Test Logic ---
+        const setupWallets = async () => {
+            updateButtonStates();
+            log('--- SETUP PHASE ---', 'info');
+            createdWallets = [];
+            walletNonces.clear();
+            initialBalances.clear();
+            walletLedger.clear();
+            allNodeUrls = nodeUrlsInput.value.split(',').map(url => url.trim()).filter(Boolean);
+            if (allNodeUrls.length === 0) {
+                log('Please provide at least one Node URL.', 'error');
+                updateButtonStates();
+                return;
+            }
+            log(`Testing against ${allNodeUrls.length} node(s).`, 'info');
+            updateNodeDistributionForm();
+
+            try {
+                const privateKey = privateKeyInput.value.trim();
+                if (!privateKey) throw new Error('Private key is required!');
+
+                mainWallet = await getWalletDetails(privateKey);
+                log(`Main wallet address: ${mainWallet.address}`, 'debug');
+
+                const setupNodeUrl = allNodeUrls[0];
+                log(`Using single node ${setupNodeUrl} for setup to ensure consistency.`, 'info');
+
+                const numToCreate = parseInt(numWalletsInput.value, 10);
+                const fundAmount = 10000;
+
+                log(`Creating ${numToCreate} new wallets...`, 'info');
+                const adminSignature = await signRequest(mainWallet.key, mainWallet.address);
+                const adminHeaders = {
+                    'X-Grapthway-Admin-Address': mainWallet.address,
+                    'X-Grapthway-Admin-Signature': adminSignature,
+                    'Content-Type': 'application/json',
+                };
+
+                for (let i = 0; i < numToCreate; i++) {
+                    const newWalletData = await apiFetch('/admin/wallet/create', { headers: adminHeaders, body: {}, nodeUrl: setupNodeUrl });
+                    const newWallet = await getWalletDetails(newWalletData.privateKey);
+                    newWallet.privateKeyHex = newWalletData.privateKey;
+                    createdWallets.push(newWallet);
+                    if ((i + 1) % 50 === 0) log(`Created wallet ${i + 1}/${numToCreate}...`, 'info');
+                }
+                log(`${createdWallets.length} wallets created successfully.`, 'success');
+
+                log(`Funding ${createdWallets.length} wallets...`, 'info');
+                let mainWalletNonce = (await apiFetch(`/public/wallet/nonce?address=${mainWallet.address}`, { nodeUrl: setupNodeUrl })).nonce;
+                for (let i = 0; i < createdWallets.length; i++) {
+                    mainWalletNonce++;
+                    const payload = { to: createdWallets[i].address, amount: fundAmount, nonce: mainWalletNonce };
+                    await sendSimpleTransaction(mainWallet, payload, setupNodeUrl);
+                    await new Promise(r => setTimeout(r, 100));
+                    if ((i + 1) % 50 === 0) log(`Funded wallet ${i + 1}/${createdWallets.length}...`, 'info');
+                }
+                
+                log(`All ${createdWallets.length} wallets funded. Waiting for transactions to settle...`, 'info');
+                await new Promise(r => setTimeout(r, 3000)); // Crucial delay to prevent race condition
+
+                log('Fetching initial nonces and balances for all test wallets...', 'info');
+                for(const wallet of createdWallets) {
+                    const nonceData = await apiFetch(`/public/wallet/nonce?address=${wallet.address}`, { nodeUrl: setupNodeUrl });
+                    walletNonces.set(wallet.address, nonceData.nonce);
+                    const balance = await fetchBalanceForWallet(wallet.address, setupNodeUrl);
+                    initialBalances.set(wallet.address, balance);
+                    walletLedger.set(wallet.address, { sent: 0, received: 0 });
+                }
+                log('Initial nonces and balances recorded for audit.', 'success');
+
+                walletValidationState = {};
+                createdWallets.forEach(wallet => {
+                    walletValidationState[wallet.address] = {
+                        isConsistent: null,
+                        lastChecked: null,
+                        results: []
+                    };
+                });
+
+                log('--- SETUP COMPLETE --- Ready to start tests.', 'success');
+                updateButtonStates();
+
+            } catch (error) {
+                log(`Setup failed: ${error.message}`, 'error');
+                updateButtonStates();
+            }
+        };
+
+        const startTest = async () => {
+            const nodeAssignmentStrategy = document.querySelector('input[name="node-strategy"]:checked').value;
+            let totalWorkersToCreate = 0;
+            const workersPerNodeConfig = new Map();
+
+            if (nodeAssignmentStrategy === 'distribute') {
+                const inputs = document.querySelectorAll('.node-wallet-input');
+                let sum = 0;
+                let isValid = true;
+                inputs.forEach(input => {
+                    const count = parseInt(input.value, 10) || 0;
+                    if (count < 0) isValid = false;
+                    sum += count;
+                    workersPerNodeConfig.set(input.dataset.nodeUrl, count);
+                });
+                totalWorkersToCreate = sum;
+                const totalWallets = parseInt(numWalletsInput.value, 10);
+                if (!isValid || sum > totalWallets) {
+                    log('Invalid wallet distribution. Total assigned wallets cannot exceed total wallet count.', 'error');
+                    return;
+                }
+                 if (sum === 0) {
+                    log('No wallets assigned to any node for distribution.', 'error');
+                    return;
+                }
+            } else {
+                const workersPerNode = parseInt(concurrencyPerNodeInput.value, 10);
+                totalWorkersToCreate = Math.min(createdWallets.length, allNodeUrls.length * workersPerNode);
+            }
+            
+            isTestRunning = true;
+            updateButtonStates();
+            log('--- STARTING TRANSFER TEST ---', 'info');
+            resetStats();
+            testStartTime = Date.now();
+            
+            const testDuration = parseInt(testDurationInput.value, 10);
+            if (testDuration > 0) {
+                log(`Test will run for ${testDuration} seconds.`, 'info');
+                testTimeout = setTimeout(() => {
+                    log('Test duration reached. Stopping test automatically.', 'warn');
+                    stopTest();
+                }, testDuration * 1000);
+            }
+
+            maxConcurrentRequests = parseInt(maxConcurrentRequestsInput.value, 10) || 450;
+            concurrentRequestsEl.textContent = `0 / ${maxConcurrentRequests}`;
+        
+            const tpsPerWorker = parseInt(tpsPerWorkerInput.value, 10);
+            const intervalMs = 1000 / tpsPerWorker;
+            log(`Using node assignment strategy: ${nodeAssignmentStrategy}`, 'info');
+
+            workers = [];
+            activeWorkersCount = 0;
+            log(`Attempting to create ${totalWorkersToCreate} workers...`, 'info');
+            
+            let walletIdx = 0;
+            if (nodeAssignmentStrategy === 'distribute') {
+                for(const [nodeUrl, count] of workersPerNodeConfig.entries()) {
+                    for (let i = 0; i < count; i++) {
+                        if (walletIdx >= createdWallets.length) break;
+                        const workerWallet = createdWallets[walletIdx++];
+                        const worker = createWorker(workerWallet, intervalMs, nodeUrl);
+                        workers.push(worker);
+                        activeWorkersCount++;
+                    }
+                }
+            } else { // Random
+                for (let i = 0; i < totalWorkersToCreate; i++) {
+                    const workerWallet = createdWallets[i];
+                    const worker = createWorker(workerWallet, intervalMs, null); // null node means random
+                    workers.push(worker);
+                    activeWorkersCount++;
+                }
+            }
+
+            activeWorkersEl.textContent = activeWorkersCount;
+            log(`Successfully created ${activeWorkersCount} workers.`, 'success');
+        };
+
+        const createWorker = (wallet, intervalMs, assignedNodeUrl) => {
+            return {
+                wallet: wallet,
+                assignedNode: assignedNodeUrl,
+                intervalId: setInterval(() => {
+                    if (!isTestRunning) return;
+                    const targetNodeUrl = assignedNodeUrl || allNodeUrls[Math.floor(Math.random() * allNodeUrls.length)];
+                    runSingleTransfer(wallet, targetNodeUrl);
+                }, intervalMs)
+            };
+        };
+
+        const runSingleTransfer = async (senderWallet, targetNodeUrl) => {
+            let recipientWallet = createdWallets[Math.floor(Math.random() * createdWallets.length)];
+            while (senderWallet.address === recipientWallet.address) {
+                recipientWallet = createdWallets[Math.floor(Math.random() * createdWallets.length)];
+            }
+            stats.sent++;
+            let currentNonce = walletNonces.get(senderWallet.address) || 0;
+            currentNonce++;
+            walletNonces.set(senderWallet.address, currentNonce);
+
+            const transferAmount = 1;
+            const payload = { to: recipientWallet.address, amount: transferAmount, nonce: currentNonce };
+            
+            try {
+                await sendSimpleTransaction(senderWallet, payload, targetNodeUrl);
+                stats.ok++;
+                const senderLedger = walletLedger.get(senderWallet.address);
+                const receiverLedger = walletLedger.get(recipientWallet.address);
+                if(senderLedger) senderLedger.sent += transferAmount;
+                if(receiverLedger) receiverLedger.received += transferAmount;
+            } catch (e) {
+                stats.fail++;
+                if (e.message && e.message.toLowerCase().includes('nonce')) {
+                    log(`Nonce error for ${senderWallet.address}. Re-syncing nonce.`, 'warn');
+                    const data = await apiFetch(`/public/wallet/nonce?address=${senderWallet.address}`, { nodeUrl: targetNodeUrl });
+                    walletNonces.set(senderWallet.address, data.nonce);
+                }
+            }
+            updateStats();
+        };
+
+        const stopTest = () => {
+            if (!isTestRunning) return;
+            if (testTimeout) {
+                clearTimeout(testTimeout);
+                testTimeout = null;
+            }
+            isTestRunning = false;
+            workers.forEach(w => clearInterval(w.intervalId));
+            workers = [];
+            activeWorkersCount = 0;
+            activeWorkersEl.textContent = activeWorkersCount;
+            updateButtonStates();
+            log('--- TRANSFER TEST STOPPED ---', 'warn');
+        };
+        
+        const startBalanceAudit = async () => {
+            if (isTestRunning || isAuditRunning) return;
+            if (initialBalances.size === 0) {
+                log('No initial balance data found. Please run setup first.', 'error');
+                return;
+            }
+            isAuditRunning = true;
+            auditIndex = 0;
+            auditResults = [];
+            updateButtonStates();
+            log('--- STARTING BATCHED LEDGER AUDIT ---', 'info');
+            
+            const batchInterval = parseInt(validationBatchIntervalInput.value, 10);
+            runAuditBatch(); 
+            auditInterval = setInterval(runAuditBatch, batchInterval);
+        };
+        
+        const runAuditBatch = async () => {
+            if (!isAuditRunning) return;
+            const walletsPerBatch = parseInt(validationWalletsPerBatchInput.value, 10);
+            const auditNodeUrl = allNodeUrls[0];
+
+            const startIndex = auditIndex;
+            const endIndex = Math.min(auditIndex + walletsPerBatch, createdWallets.length);
+            const walletsToAudit = createdWallets.slice(startIndex, endIndex);
+
+            auditSummaryContainer.innerHTML = `<p class="text-sm text-slate-500">Auditing wallets ${startIndex + 1}-${endIndex} of ${createdWallets.length}...</p>`;
+            auditProgressBar.classList.remove('hidden');
+            auditProgressFill.style.width = `${(endIndex / createdWallets.length) * 100}%`;
+
+            for (const wallet of walletsToAudit) {
+                const address = wallet.address;
+                const finalBalance = await fetchBalanceForWallet(address, auditNodeUrl);
+                const initialBalance = initialBalances.get(address);
+                const ledger = walletLedger.get(address) || { sent: 0, received: 0 };
+                const expectedBalance = initialBalance - ledger.sent + ledger.received;
+
+                if (finalBalance !== null && typeof expectedBalance !== 'undefined') {
+                    if (Math.abs(finalBalance - expectedBalance) > 1e-9) {
+                        auditResults.push({
+                            address,
+                            expected: expectedBalance,
+                            final: finalBalance,
+                            diff: finalBalance - expectedBalance
+                        });
+                    }
+                }
+            }
+            auditIndex = endIndex;
+
+            if (auditIndex >= createdWallets.length) {
+                stopBalanceAudit(true); // Finished
+            }
+        };
+        
+        const stopBalanceAudit = (finished = false) => {
+            isAuditRunning = false;
+            clearInterval(auditInterval);
+            auditInterval = null;
+            updateButtonStates();
+            if (finished) {
+                log('--- LEDGER AUDIT COMPLETE ---', 'info');
+                renderAuditResults(auditResults);
+            } else {
+                log('--- LEDGER AUDIT STOPPED BY USER ---', 'warn');
+                auditSummaryContainer.innerHTML = `<p class="text-sm text-slate-500">Audit stopped by user.</p>`;
+                auditProgressBar.classList.add('hidden');
+            }
+        };
+
+        const renderAuditResults = (discrepancies) => {
+            auditProgressBar.classList.add('hidden');
+            let html = '';
+            if (discrepancies.length === 0) {
+                html = `
+                    <div class="p-4 rounded-lg bg-emerald-50 border-l-4 border-emerald-500">
+                        <div class="flex items-center">
+                            <i data-lucide="check-circle-2" class="w-6 h-6 text-emerald-600 mr-3"></i>
+                            <div>
+                                <h4 class="font-bold text-emerald-800">Audit Passed</h4>
+                                <p class="text-sm text-emerald-700">All ${createdWallets.length} wallet balances match expected values.</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else {
+                 html = `
+                    <div class="p-4 rounded-lg bg-red-50 border-l-4 border-red-500">
+                         <div class="flex items-center">
+                            <i data-lucide="x-circle" class="w-6 h-6 text-red-600 mr-3"></i>
+                            <div>
+                                <h4 class="font-bold text-red-800">Audit Failed</h4>
+                                <p class="text-sm text-red-700">${discrepancies.length} wallet(s) have inconsistent balances.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-4 text-xs font-mono h-40 overflow-y-auto bg-slate-50 p-2 rounded">
+                        ${discrepancies.map(d => `
+                            <div class="mb-2">
+                                <div><span class="font-bold">Wallet:</span> ${d.address}</div>
+                                <div><span class="text-slate-500">Expected:</span> ${d.expected.toFixed(6)}</div>
+                                <div><span class="text-red-600 font-bold">Actual:</span> ${d.final.toFixed(6)}</div>
+                                <div><span class="text-red-600 font-bold">Diff:</span> ${d.diff.toFixed(6)}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+            auditSummaryContainer.innerHTML = html;
+            lucide.createIcons();
+            log(`--- AUDIT COMPLETE --- Found ${discrepancies.length} discrepancies.`, discrepancies.length > 0 ? 'error' : 'success');
+        };
+
+        const generatePDF = async () => {
+            log('Generating PDF report...', 'info');
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+            const reportContent = document.getElementById('report-content');
+            const wasStatsHidden = statsContainer.classList.contains('hidden');
+            if(wasStatsHidden) statsContainer.classList.remove('hidden');
+
+            const canvas = await html2canvas(reportContent, {
+                scale: 2, 
+                logging: false,
+                useCORS: true,
+                onclone: (document) => { 
+                    document.getElementById('report-content').querySelectorAll('.no-print').forEach(el => el.style.display = 'none');
+                }
+            });
+
+            if(wasStatsHidden) statsContainer.classList.add('hidden');
+            const imgData = canvas.toDataURL('image/png');
+            const imgProps = doc.getImageProperties(imgData);
+            const pdfWidth = doc.internal.pageSize.getWidth();
+            const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+            doc.setFontSize(18);
+            doc.text('Grapthway Load Test Report', pdfWidth / 2, 20, { align: 'center' });
+            doc.setFontSize(10);
+            doc.text(`Generated on: ${new Date().toLocaleString()}`, pdfWidth / 2, 26, { align: 'center' });
+            doc.addImage(imgData, 'PNG', 10, 35, pdfWidth - 20, pdfHeight - 20);
+            doc.save(`Grapthway-Report-${Date.now()}.pdf`);
+            log('PDF report generated and saved.', 'success');
+        };
+
+        const updateButtonStates = () => {
+            const walletsReady = createdWallets.length > 0;
+            const anActivityIsRunning = isTestRunning || isValidationRunning || isAuditRunning;
+            setupBtn.disabled = anActivityIsRunning;
+            startBtn.disabled = !walletsReady || anActivityIsRunning;
+            stopBtn.disabled = !isTestRunning;
+            startValidationBtn.disabled = !walletsReady || anActivityIsRunning;
+            stopValidationBtn.disabled = !isValidationRunning;
+            startAuditBtn.disabled = !walletsReady || anActivityIsRunning;
+            stopAuditBtn.classList.toggle('hidden', !isAuditRunning);
+            startAuditBtn.classList.toggle('hidden', isAuditRunning);
+            exportWalletsBtn.disabled = !walletsReady || anActivityIsRunning;
+            refundWalletsBtn.disabled = !walletsReady || anActivityIsRunning || !mainWallet.address;
+            refuelWalletsBtn.disabled = !walletsReady || anActivityIsRunning || !mainWallet.address;
+            importWalletsInput.disabled = anActivityIsRunning;
+
+            [setupBtn, startBtn, stopBtn, startValidationBtn, stopValidationBtn, exportWalletsBtn, refundWalletsBtn, refuelWalletsBtn, startAuditBtn].forEach(btn => {
+                if(btn) {
+                    if (btn.disabled) btn.classList.add('btn-disabled');
+                    else btn.classList.remove('btn-disabled');
+                }
+            });
+        };
+
+        const resetStats = () => {
+            stats = { sent: 0, ok: 0, fail: 0 };
+            testStartTime = Date.now();
+            walletLedger.forEach(ledger => {
+                ledger.sent = 0;
+                ledger.received = 0;
+            });
+            updateStats();
+        };
+
+        const updateStats = () => {
+            transfersSentEl.textContent = stats.sent;
+            transfersOkEl.textContent = stats.ok;
+            transfersFailEl.textContent = stats.fail;
+            const elapsedSeconds = (Date.now() - testStartTime) / 1000;
+            const tps = elapsedSeconds > 0 ? (stats.ok / elapsedSeconds).toFixed(1) : 0.0;
+            tpsEl.textContent = tps;
+            activeWorkersEl.textContent = activeWorkersCount;
+        };
+        
+        const updateNodeDistributionForm = () => {
+            const strategy = document.querySelector('input[name="node-strategy"]:checked').value;
+            if (strategy === 'distribute') {
+                const urls = nodeUrlsInput.value.split(',').map(url => url.trim()).filter(Boolean);
+                if (urls.length > 0) {
+                    let html = `<label class="block text-sm font-medium text-gray-700 mb-2">Wallet Distribution per Node</label>`;
+                    urls.forEach(url => {
+                        const shortUrl = new URL(url).hostname + ":" + new URL(url).port;
+                        html += `
+                            <div class="grid grid-cols-3 gap-2 items-center">
+                                <label for="node-wallets-${shortUrl}" class="text-xs col-span-2 truncate" title="${url}">${shortUrl}</label>
+                                <input type="number" data-node-url="${url}" id="node-wallets-${shortUrl}" value="0" min="0" class="input-field node-wallet-input w-full px-2 py-1 text-sm">
+                            </div>
+                        `;
+                    });
+                    nodeDistributionContainer.innerHTML = html;
+                } else {
+                    nodeDistributionContainer.innerHTML = `<p class="text-xs text-amber-600">Enter node URLs to configure distribution.</p>`;
+                }
+                nodeDistributionContainer.classList.remove('hidden');
+            } else {
+                nodeDistributionContainer.classList.add('hidden');
+                nodeDistributionContainer.innerHTML = '';
+            }
+        };
+        
+        // --- Wallet Management Functions ---
+        const exportWallets = () => {
+            if (createdWallets.length === 0) {
+                log('No wallets to export.', 'warn');
+                return;
+            }
+            const walletsToExport = createdWallets.map(w => ({
+                address: w.address,
+                publicKey: w.publicKey,
+                privateKeyHex: w.privateKeyHex
+            }));
+            const dataStr = JSON.stringify({ wallets: walletsToExport }, null, 2);
+            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `grapthway-wallets-${Date.now()}.json`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            log(`Exported ${createdWallets.length} wallets.`, 'success');
+        };
+
+        const handleImportWallets = (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (!data.wallets || !Array.isArray(data.wallets)) throw new Error('Invalid wallet file format.');
+                    
+                    createdWallets = [];
+                    walletNonces.clear();
+                    
+                    for (const importedWallet of data.wallets) {
+                        const walletDetails = await getWalletDetails(importedWallet.privateKeyHex);
+                        walletDetails.privateKeyHex = importedWallet.privateKeyHex;
+                        createdWallets.push(walletDetails);
+                    }
+
+                    log(`Successfully imported and verified ${createdWallets.length} wallets.`, 'success');
+                    
+                    allNodeUrls = nodeUrlsInput.value.split(',').map(url => url.trim()).filter(Boolean);
+                    const privateKey = privateKeyInput.value.trim();
+                    if (privateKey) mainWallet = await getWalletDetails(privateKey);
+                    
+                    updateButtonStates();
+                } catch (error) {
+                    log(`Failed to import wallets: ${error.message}`, 'error');
+                }
+            };
+            reader.readAsText(file);
+        };
+        
+        const refuelWallets = async () => {
+            const refuelAmount = parseFloat(refuelAmountInput.value);
+            if (isNaN(refuelAmount) || refuelAmount <= 0) {
+                log('Please enter a valid, positive amount to refuel.', 'error');
+                return;
+            }
+            const confirmed = await showConfirm('Confirm Refuel', `Are you sure you want to send ${refuelAmount} to all ${createdWallets.length} test wallets from ${mainWallet.address}? This may take a while.`);
+            if (!confirmed) {
+                log('Refuel cancelled by user.', 'warn');
+                return;
+            }
+
+            isTestRunning = true; // Block other actions
+            updateButtonStates();
+            log(`--- STARTING REFUEL PROCESS ---`, 'info');
+
+            let refueledCount = 0;
+            const setupNodeUrl = allNodeUrls[0];
+
+            try {
+                let mainWalletNonce = (await apiFetch(`/public/wallet/nonce?address=${mainWallet.address}`, { nodeUrl: setupNodeUrl })).nonce;
+                for (let i = 0; i < createdWallets.length; i++) {
+                    mainWalletNonce++;
+                    const payload = { to: createdWallets[i].address, amount: refuelAmount, nonce: mainWalletNonce };
+                    await sendSimpleTransaction(mainWallet, payload, setupNodeUrl);
+                    refueledCount++;
+                    await new Promise(r => setTimeout(r, 100));
+                    if ((i + 1) % 20 === 0 || i === createdWallets.length - 1) {
+                       log(`[${i + 1}/${createdWallets.length}] Refueled wallet...`, 'info');
+                    }
+                }
+
+                log('Waiting for refuel transactions to process...', 'info');
+                await new Promise(r => setTimeout(r, 3000));
+                
+                log('Updating wallet balances for audit...', 'info');
+                 for(const wallet of createdWallets) {
+                    const balance = await fetchBalanceForWallet(wallet.address, setupNodeUrl);
+                    initialBalances.set(wallet.address, balance);
+                    walletLedger.set(wallet.address, { sent: 0, received: 0 }); // Reset ledger after refuel
+                }
+
+                log(`--- REFUEL COMPLETE ---`, 'success');
+                log(`Refueled ${refueledCount} wallets. Balances updated for audit.`, 'success');
+            } catch(e) {
+                log(`Refuel failed: ${e.message}`, 'error');
+            } finally {
+                isTestRunning = false;
+                updateButtonStates();
+            }
+        };
+
+        const refundWallets = async () => {
+            const confirmed = await showConfirm('Confirm Refund', `Are you sure you want to refund all ${createdWallets.length} test wallets back to ${mainWallet.address}? This action cannot be undone.`);
+            if (!confirmed) {
+                log('Refund cancelled by user.', 'warn');
+                return;
+            }
+
+            isTestRunning = true;
+            updateButtonStates();
+            log(`--- STARTING REFUND PROCESS ---`, 'info');
+            const refundNodeUrl = allNodeUrls[0];
+            log(`Using single node ${refundNodeUrl} for refund to ensure consistency.`, 'info');
+
+            let refundedCount = 0;
+            
+            try {
+                for (let i = 0; i < createdWallets.length; i++) {
+                    const wallet = createdWallets[i];
+                    
+                    const balanceData = await apiFetch(`/public/wallet/balance?address=${wallet.address}`, { nodeUrl: refundNodeUrl });
+                    const balance = balanceData.balance;
+
+                    if (balance > 0.0001) { 
+                        const nonceData = await apiFetch(`/public/wallet/nonce?address=${wallet.address}`, { nodeUrl: refundNodeUrl });
+                        const payload = { to: mainWallet.address, amount: balance, nonce: nonceData.nonce + 1 };
+                        await sendSimpleTransaction(wallet, payload, refundNodeUrl);
+                        refundedCount++;
+                        log(`[${i+1}/${createdWallets.length}] Refunded ${balance.toFixed(4)} from ${wallet.address}`, 'debug');
+                    } else {
+                        log(`[${i+1}/${createdWallets.length}] Skipping wallet with zero/dust balance: ${wallet.address}`, 'debug');
+                    }
+                    await new Promise(r => setTimeout(r, 100));
+                }
+                log(`--- REFUND COMPLETE ---`, 'success');
+                log(`Refunded ${refundedCount} wallets.`, 'success');
+            } catch (e) {
+                 log(`Refund failed: ${e.message}`, 'error');
+            } finally {
+                isTestRunning = false;
+                updateButtonStates();
+            }
+        };
+
+
+        // Event Listeners
+        setupBtn.addEventListener('click', setupWallets);
+        startBtn.addEventListener('click', startTest);
+        stopBtn.addEventListener('click', stopTest);
+        startAuditBtn.addEventListener('click', startBalanceAudit);
+        stopAuditBtn.addEventListener('click', () => stopBalanceAudit(false));
+        generatePdfBtn.addEventListener('click', generatePDF);
+        nodeUrlsInput.addEventListener('blur', updateNodeDistributionForm);
+        document.querySelectorAll('input[name="node-strategy"]').forEach(radio => {
+            radio.addEventListener('change', updateNodeDistributionForm);
+        });
+        exportWalletsBtn.addEventListener('click', exportWallets);
+        importWalletsInput.addEventListener('change', handleImportWallets);
+        refundWalletsBtn.addEventListener('click', refundWallets);
+        refuelWalletsBtn.addEventListener('click', refuelWallets);
+        
+        // --- Validation Logic ---
+        const validateLedgerState = async () => {
+            if (!isValidationRunning) return;
+            
+            const walletsPerBatch = parseInt(validationWalletsPerBatchInput.value, 10);
+            
+            const startIndex = validationIndex;
+            const endIndex = Math.min(validationIndex + walletsPerBatch, createdWallets.length);
+            const walletsToValidate = createdWallets.slice(startIndex, endIndex);
+            
+            validationStatusEl.textContent = `Validating wallets ${startIndex + 1}-${endIndex} of ${createdWallets.length}...`;
+            validationProgressBar.classList.remove('hidden');
+            validationProgressFill.style.width = `${(endIndex / createdWallets.length) * 100}%`;
+            
+            const validationPromises = walletsToValidate.map(async (wallet) => {
+                const balancePromises = allNodeUrls.map(nodeUrl =>
+                    apiFetch(`/public/wallet/balance?address=${wallet.address}`, { nodeUrl })
+                    .then(data => ({ nodeUrl, balance: data.balance }))
+                    .catch(() => ({ nodeUrl, balance: 'Error' }))
+                );
+                const results = await Promise.all(balancePromises);
+                const validResults = results.filter(r => r.balance !== 'Error');
+                
+                if (validResults.length === 0) return { wallet, results, isConsistent: false };
+
+                const firstBalance = validResults[0].balance.toFixed(6);
+                const isConsistent = validResults.every(r => r.balance.toFixed(6) === firstBalance) && validResults.length === allNodeUrls.length;
+
+                walletValidationState[wallet.address] = { isConsistent, lastChecked: new Date(), results };
+                return { wallet, results, isConsistent };
+            });
+
+            await Promise.all(validationPromises);
+            
+            validationIndex = endIndex >= createdWallets.length ? 0 : endIndex;
+            
+            updateValidationUI();
+        };
+
+        const updateValidationUI = () => {
+            let inconsistentCount = 0;
+            let consistentCount = 0;
+            
+            for (const address in walletValidationState) {
+                if (walletValidationState[address].isConsistent === false) inconsistentCount++;
+                else if (walletValidationState[address].isConsistent === true) consistentCount++;
+            }
+            
+            inconsistentHeader.textContent = `Inconsistent Wallets (${inconsistentCount})`;
+            consistentHeader.textContent = `Consistent Wallets (${consistentCount})`;
+            inconsistentWalletsContainer.innerHTML = '';
+            consistentWalletsContainer.innerHTML = '';
+
+            const renderResult = (address, res) => {
+                const entry = document.createElement('div');
+                entry.className = `p-3 rounded-lg ${res.isConsistent ? 'validation-ok' : 'validation-fail'}`;
+                const firstValidResult = res.results.find(b => b.balance !== 'Error');
+                
+                let balancesHtml = res.results.map(r => {
+                    const shortUrl = new URL(r.nodeUrl).hostname + ":" + new URL(r.nodeUrl).port;
+                    const balanceOk = typeof r.balance === 'number' && firstValidResult && r.balance.toFixed(6) === firstValidResult.balance.toFixed(6);
+                    const balanceHtml = typeof r.balance === 'number' ? r.balance.toFixed(6) : r.balance;
+                    const balanceClass = r.balance === 'Error' ? 'text-amber-600' : (balanceOk ? 'text-emerald-700' : 'text-red-700 font-bold');
+                    return `<span class="mr-3"><i data-lucide="server" class="w-3 h-3 inline-block mr-1"></i>${shortUrl}: <span class="font-mono text-sm ${balanceClass}">${balanceHtml}</span></span>`;
+                }).join('');
+                entry.innerHTML = `<div class="font-mono text-xs text-slate-600 mb-1">${address}</div><div class="text-xs">${balancesHtml}</div>`;
+                return entry;
+            };
+
+            for (const address in walletValidationState) {
+                const state = walletValidationState[address];
+                if (state.isConsistent === false) {
+                    inconsistentWalletsContainer.appendChild(renderResult(address, state));
+                }
+            }
+
+            let consistentDisplayed = 0;
+            for (const address in walletValidationState) {
+                const state = walletValidationState[address];
+                if (state.isConsistent === true && consistentDisplayed < 20) {
+                    consistentWalletsContainer.appendChild(renderResult(address, state));
+                    consistentDisplayed++;
+                }
+            }
+
+            if (consistentDisplayed >= 20) {
+                consistentWalletsContainer.innerHTML += `<div class="text-center text-xs text-slate-500 mt-3">... and ${consistentCount - 20} more</div>`;
+            }
+
+            lucide.createIcons();
+            
+            const overallConsistent = inconsistentCount === 0;
+            validationStatusEl.textContent = overallConsistent ? 
+                `✓ All wallets consistent (${new Date().toLocaleTimeString()})` : 
+                `⚠ ${inconsistentCount} inconsistent wallets (${new Date().toLocaleTimeString()})`;
+            validationStatusEl.className = `text-sm font-semibold ${overallConsistent ? 'text-emerald-600' : 'text-red-600'}`;
+        };
+        
+        const startValidation = () => {
+            if (createdWallets.length === 0) {
+                log('Please run setup first.', 'error');
+                return;
+            }
+            isValidationRunning = true;
+            validationIndex = 0;
+            updateButtonStates();
+            log('--- STARTING STATE VALIDATION ---', 'info');
+            const batchInterval = parseInt(validationBatchIntervalInput.value, 10);
+            validateLedgerState(); 
+            validationInterval = setInterval(validateLedgerState, batchInterval);
+        };
+
+        const stopValidation = () => {
+            isValidationRunning = false;
+            clearInterval(validationInterval);
+            validationInterval = null;
+            updateButtonStates();
+            log('--- STATE VALIDATION STOPPED ---', 'warn');
+            validationStatusEl.textContent = 'Validation stopped.';
+            validationStatusEl.className = 'text-sm font-semibold text-slate-500';
+            validationProgressBar.classList.add('hidden');
+        };
+        
+        startValidationBtn.addEventListener('click', startValidation);
+        stopValidationBtn.addEventListener('click', stopValidation);
+
+        // Initial setup
+        updateButtonStates();
+        updateNodeDistributionForm();
+    });
+</script>
+</body>
+</html>
+

@@ -1,0 +1,68 @@
+syntax = "proto3";
+
+package proto;
+
+import "pkg/proto/transaction.proto";
+import "pkg/proto/block.proto";
+
+option go_package = "grapthway/pkg/proto";
+
+message BlockRequest {
+  uint64 start_height = 1;
+  uint64 limit = 2;
+}
+
+message BlockResponse {
+  repeated Block blocks = 1;
+}
+
+message KnownTxsRequest {
+    repeated string tx_ids = 1;
+}
+
+message KnownTxsResponse {
+    map<string, bool> known_tx_ids = 1;
+}
+
+message MissingTxsRequest {
+    repeated string tx_ids = 1;
+}
+
+message MissingTxsResponse {
+    repeated Transaction missing_txs = 1;
+}
+
+message MempoolSyncRequest {
+    map<string, bool> known_tx_ids = 1;
+}
+
+message MempoolSyncResponse {
+    repeated Transaction missing_txs = 1;
+}
+
+message ChainTipQuorumCheck {
+  string block_hash = 1;
+  uint64 block_height = 2;
+}
+
+message NextBlockReady {
+  uint64 block_height = 1;
+  string validator_id = 2;
+}
+
+message MissingTxRequestByNonce {
+    string address = 1;
+    uint64 nonce = 2;
+}
+
+message FullSyncState {
+    map<string, AccountState> accounts = 1;
+    repeated ValidatorInfo validator_set = 2;
+    string last_block_hash = 3;
+    uint64 last_block_height = 4;
+    Block last_block = 5;
+    // --- ADDED FIELDS FOR TOKEN SYNC ---
+    map<string, TokenState> tokens = 6;
+    repeated TokenBalance token_balances = 7;
+    repeated TokenAllowance token_allowances = 8;
+}

@@ -1,0 +1,1249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grapthway: The Sovereign Execution Protocol - A Technical White Paper (v2.3)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+    <style>
+        @media print {
+            body { margin: 0; font-size: 10pt; }
+            .page-break { page-break-before: always; }
+            .no-print { display: none; }
+            .content-wrapper { box-shadow: none; border: none; }
+            pre {
+                background: #fff !important;
+                border: 1px solid #dee2e6;
+                page-break-inside: avoid;
+            }
+        }
+        
+        body {
+            font-family: 'Lora', serif;
+            line-height: 1.7;
+            background: #f8f9fa;
+            color: #212529;
+            display: flex;
+            justify-content: center;
+            padding: 2rem 0;
+        }
+        
+        .content-wrapper {
+            max-width: 8.5in;
+            width: 100%;
+            background: white;
+            padding: 1in;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            border: 1px solid #dee2e6;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+            border-bottom: 2px solid #212529;
+            padding-bottom: 1rem;
+        }
+        
+        h1 {
+            font-family: 'Inter', sans-serif;
+            font-size: 28px;
+            font-weight: 700;
+            margin: 0 0 0.5rem 0;
+            color: #000;
+        }
+        
+        .subtitle {
+            font-family: 'Inter', sans-serif;
+            font-size: 18px;
+            font-style: italic;
+            margin: 0.5rem 0;
+            color: #495057;
+        }
+        
+        .version {
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            margin-top: 1rem;
+            color: #6c757d;
+        }
+        
+        h2 {
+            font-family: 'Inter', sans-serif;
+            font-size: 22px;
+            font-weight: 700;
+            margin: 2.5rem 0 1.5rem 0;
+            color: #000;
+            border-bottom: 1px solid #dee2e6;
+            padding-bottom: 0.5rem;
+        }
+        
+        h3 {
+            font-family: 'Inter', sans-serif;
+            font-size: 18px;
+            font-weight: 600;
+            margin: 2rem 0 1rem 0;
+            color: #343a40;
+        }
+        
+        h4 {
+            font-family: 'Inter', sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            margin: 1.5rem 0 0.8rem 0;
+            color: #495057;
+        }
+        
+        p, li {
+            margin-bottom: 1rem;
+            text-align: justify;
+        }
+
+        #toc {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 1.5rem 2rem;
+            margin: 2rem 0;
+            border-radius: 8px;
+        }
+
+        #toc h2 {
+            margin-top: 0;
+            border-bottom: none;
+            font-size: 18px;
+        }
+
+        #toc ul {
+            list-style-type: none;
+            padding-left: 0;
+        }
+        #toc > ul > li {
+            font-weight: 600;
+        }
+
+        #toc ul ul {
+            padding-left: 1.5rem;
+            margin-top: 0.5rem;
+        }
+        #toc ul ul li {
+            font-weight: 400;
+        }
+        #toc a {
+            text-decoration: none;
+            color: #0056b3;
+        }
+        #toc a:hover {
+            text-decoration: underline;
+        }
+        
+        .abstract {
+            background: #f8f9fa;
+            padding: 1.5rem;
+            border-left: 5px solid #0056b3;
+            margin: 2rem 0;
+            font-style: italic;
+        }
+        
+        .abstract h2 {
+            margin-top: 0;
+            border-bottom: none;
+            font-size: 18px;
+        }
+        
+        ul, ol { margin: 1rem 0; padding-left: 2rem; }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 2rem 0;
+            font-size: 12px;
+            font-family: 'Inter', sans-serif;
+        }
+        
+        th, td {
+            border: 1px solid #dee2e6;
+            padding: 0.8rem;
+            text-align: left;
+            vertical-align: top;
+        }
+        
+        th { background-color: #f8f9fa; font-weight: 600; }
+        
+        .emphasis { font-weight: bold; color: #000; }
+        
+        .code {
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            background: #e9ecef;
+            padding: 0.2em 0.4em;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        
+        /* Added styles for <pre> blocks from the new content */
+        pre {
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 1rem;
+            border-radius: 8px;
+            font-size: 0.9em;
+            overflow-x: auto;
+            white-space: pre;
+            line-height: 1.5;
+        }
+        
+        pre code {
+            background: none;
+            padding: 0;
+            border-radius: 0;
+            font-size: 1em; /* Inherit from pre */
+        }
+        
+        .architecture-diagram {
+            width: 100%;
+            margin: 2rem 0;
+            font-family: 'Inter', sans-serif;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 1rem;
+            background: #f8f9fa;
+        }
+        
+        .print-button {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #0056b3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            z-index: 100;
+        }
+        
+        .print-button:hover { background: #004494; }
+        
+        .footer {
+            margin-top: 3rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid #dee2e6;
+            text-align: center;
+            font-size: 12px;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <button class="print-button no-print" onclick="window.print()">Print/Save as PDF</button>
+    
+    <div class="content-wrapper">
+        <div class="header">
+            <h1>Grapthway: The Sovereign Execution Protocol</h1>
+            <div class="subtitle">A Technical White Paper</div>
+            <div class="version">Version 2.3 | December 30, 2025</div>
+        </div>
+        
+        <div class="abstract">
+            <h2>Abstract</h2>
+            <p>The contemporary digital landscape presents developers with a stark dichotomy: sacrifice sovereignty for the performance and scalability of centralized Web2 platforms, or contend with the profound complexity, cost, and performance limitations of Web3 blockchains. The Grapthway Protocol emerges as a novel paradigm, rejecting this compromise. It is a <strong>Sovereign Execution Protocol</strong> meticulously engineered to empower developers to transform any standard Web2 service into a resilient, high-performance decentralized application (dApp).</p>
+
+            <p>Architected upon a fully peer-to-peer network leveraging <strong>libp2p</strong>, Grapthway introduces a programmable, crypto-economically secured orchestration layer that operates independently of an application's core logic. This allows developers to retain their existing technology stacks and hosting environments. The protocol's native economy is powered by the <strong>Grapthway Compute Unit (GCU)</strong> token, which facilitates predictable, low-cost operations for developers and provides a fair incentive structure for the independent Node Operators who secure the network.</p>
+            
+            <p>By decoupling application logic from a community-owned execution layer, Grapthway synthesizes the performance of Web2 with the sovereignty of Web3, thereby catalyzing a more open, resilient, and creator-centric internet.</p>
+        </div>
+
+        <div class="page-break"></div>
+        <nav id="toc">
+            <h2>Table of Contents</h2>
+            <ul>
+                <li><a href="#s1">1. The Problem: A False Choice</a></li>
+                <li><a href="#s2">2. Core Architecture</a></li>
+                <li><a href="#s3">3. The Sovereign Execution Layer</a></li>
+                <li><a href="#s4">4. Layer 1 Blockchain: High-Throughput Consensus</a></li>
+                <li><a href="#s5">5. Native Token System</a></li>
+                <li><a href="#s6">6. Economic Model</a></li>
+                <li><a href="#s7">7. Performance & Scalability</a></li>
+                <li><a href="#s8">8. Security Model</a></li>
+                <li><a href="#s9">9. Comparison with Existing Platforms</a></li>
+                <li><a href="#s10">10. Use Cases</a></li>
+                <li><a href="#s11">11. Roadmap</a></li>
+                <li><a href="#s12">12. Conclusion</a></li>
+            </ul>
+        </nav>
+        
+        <div class="page-break"></div>
+
+        <h2 id="s1">1. The Problem: A False Choice</h2>
+        <p>The evolution of the internet has been a story of trade-offs.</p>
+
+        <h3>1.1 Web2 Platforms</h3>
+        <p><strong>Examples:</strong> AWS, Google Cloud, Vercel</p>
+        <p><strong>Strengths:</strong> Incredible developer experiences and scalability</p>
+        <p><strong>Limitations:</strong></p>
+        <ul>
+            <li><strong>Vendor Lock-In:</strong> Proprietary APIs and infrastructure dependencies</li>
+            <li><strong>Censorship Risk:</strong> Centralized entities can unilaterally suspend services</li>
+            <li><strong>Opaque Economics:</strong> Unpredictable pricing and profit extraction</li>
+            <li><strong>Single Point of Failure:</strong> Catastrophic outages affect millions</li>
+        </ul>
+
+        <h3>1.2 Web3 Platforms</h3>
+        <p><strong>Examples:</strong> Ethereum, Solana</p>
+        <p><strong>Strengths:</strong> Decentralized trust and censorship resistance</p>
+        <p><strong>Limitations:</strong></p>
+        <ul>
+            <li><strong>Performance Bottlenecks:</strong> 15-100 TPS limits real-world applications</li>
+            <li><strong>Volatile Costs:</strong> Gas fees fluctuate wildly, making budgeting impossible</li>
+            <li><strong>Developer Friction:</strong> Requires learning Solidity, Rust, or niche languages</li>
+            <li><strong>Monolithic Architecture:</strong> All logic must execute on-chain in a single VM</li>
+        </ul>
+
+        <p><strong>Grapthway provides the third way.</strong> It is a protocol built on the belief that developers should not have to choose between performance and freedom.</p>
+
+        <div class="page-break"></div>
+        
+        <h2 id="s2">2. Core Architecture</h2>
+        
+        <h3>2.1 Hybrid Layer 1 + Off-Chain Execution Model</h3>
+
+        <p>Grapthway redefines what a Layer 1 protocol can be. Unlike general-purpose blockchains that are slow because they must run all application logic on-chain, Grapthway features a <strong>purpose-built L1 blockchain</strong> that is hyper-optimized for its core tasks: <strong>economic settlement, token operations, and network security</strong>. Complex application logic is handled by Grapthway's highly scalable, <strong>off-chain Sovereign Execution Layer</strong>.</p>
+
+        <p>This hybrid architecture allows the protocol to function as a smart, secure, and resilient front door that transforms any application into a dApp without sacrificing performance.</p>
+
+        <h3>2.2 Service Registration & Ownership</h3>
+
+        <p>The core innovation is the <strong>separation of the application from its execution and access logic</strong>. Developers build applications using their preferred technology (Node.js, Python, Go, Rust) and host them anywhere. They then register this application with the Grapthway Protocol, defining a powerful set of rules, schemas, and orchestration pipelines for how the world can interact with it.</p>
+
+        <p>All services are namespaced under the developer's unique wallet address, accessed via a path like:</p>
+        <p><code class="code">/{wallet_address}/{subgraph_name}/graphql</code></p>
+
+        <p>The protocol <strong>cryptographically enforces ownership</strong> using ECDSA secp256k1 signatures, ensuring that only the original creator can publish updates to their service. Service configurations are stored in a distributed hash table (DHT) with content-addressed identifiers (CIDs), making them tamper-proof and verifiable.</p>
+
+        <h3>2.3 Fully Decentralized P2P Network</h3>
+
+        <p>The Grapthway Protocol is a fully decentralized system built on <strong>libp2p</strong>. This architecture removes all central dependencies for core network operations:</p>
+
+        <ul>
+            <li><strong>Service Discovery:</strong> DHT-based resolution eliminates central registries</li>
+            <li><strong>State Synchronization:</strong> GossipSub protocol broadcasts blocks, transactions, and validator updates</li>
+            <li><strong>Consensus Communication:</strong> Direct libp2p streams for pre-block proposals and acknowledgments</li>
+            <li><strong>Peer Validation:</strong> Cryptographic handshakes verify stake and hardware claims before connection</li>
+        </ul>
+
+        <p>The network's resilience is derived from its multi-layered P2P foundation, featuring a self-healing topology to prevent network partitioning and ensure high availability.</p>
+        
+        <svg viewBox="0 0 800 600" class="architecture-diagram" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <marker id="arrow-en" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                    <path d="M 0 0 L 10 5 L 0 10 z" fill="#333" />
+                </marker>
+            </defs>
+            <style>
+                .label { font-size: 11px; font-family: 'Inter', sans-serif; fill: #333; }
+                .label-bold { font-weight: bold; font-size: 12px; }
+                .label-sm { font-size: 10px; fill: #555;}
+                .box { stroke: #333; stroke-width: 1; fill: #fff; }
+                .box-blue { fill: #e9f5ff; stroke: #a5d8ff; }
+                .box-green { fill: #e6f9f0; stroke: #a3e9d1; }
+                .box-gray { fill: #f8f9fa; stroke: #dee2e6; }
+                .line { stroke: #333; stroke-width: 1.5; marker-end: url(#arrow-en); }
+                .line-dash { stroke-dasharray: 5 3; }
+            </style>
+            <rect x="10" y="240" width="100" height="60" rx="5" class="box box-green" />
+            <text x="60" y="275" text-anchor="middle" class="label label-bold">User / Client</text>
+            <rect x="690" y="240" width="100" height="60" rx="5" class="box box-green" />
+            <text x="740" y="265" text-anchor="middle" class="label label-bold">Developer's</text>
+            <text x="740" y="280" text-anchor="middle" class="label label-bold">Web2 Service</text>
+            <rect x="350" y="10" width="100" height="50" rx="5" class="box box-green" />
+            <text x="400" y="35" text-anchor="middle" class="label label-bold">Developer</text>
+            <rect x="130" y="80" width="540" height="480" rx="10" class="box-gray" />
+            <text x="400" y="105" text-anchor="middle" class="label-bold" style="font-size: 14px;">Grapthway P2P Network</text>
+            <rect x="150" y="120" width="240" height="200" rx="5" class="box-blue" />
+            <text x="270" y="140" text-anchor="middle" class="label label-bold">Server Node (Public API)</text>
+            <rect x="160" y="155" width="220" height="60" rx="3" class="box" />
+            <text x="270" y="185" text-anchor="middle" class="label">Pipeline Executor (Sync)</text>
+            <rect x="160" y="225" width="220" height="60" rx="3" class="box" />
+            <text x="270" y="255" text-anchor="middle" class="label">GraphQL/REST Gateway</text>
+            <rect x="410" y="120" width="240" height="200" rx="5" class="box-blue" />
+            <text x="530" y="140" text-anchor="middle" class="label label-bold">Worker Node (Async)</text>
+            <rect x="420" y="155" width="220" height="60" rx="3" class="box" />
+            <text x="530" y="185" text-anchor="middle" class="label">Workflow Engine</text>
+            <rect x="150" y="340" width="520" height="100" rx="5" class="box" />
+            <text x="410" y="365" text-anchor="middle" class="label label-bold">Shared P2P Layer</text>
+            <text x="410" y="385" text-anchor="middle" class="label">GossipSub, Kademlia DHT, Peer Exchange</text>
+            <rect x="150" y="450" width="520" height="100" rx="5" class="box" />
+            <text x="410" y="475" text-anchor="middle" class="label label-bold">Replicated L1 Ledger</text>
+            <text x="410" y="495" text-anchor="middle" class="label">DPoS Consensus & State Machine</text>
+            <path d="M 110 270 L 160 270" class="line" fill="none" />
+            <text x="135" y="265" text-anchor="middle" class="label-sm">API Request</text>
+            <path d="M 160 280 L 110 280" class="line" fill="none" />
+            <text x="135" y="292" text-anchor="middle" class="label-sm">Final Response</text>
+            <path d="M 400 60 L 400 80" class="line" fill="none" />
+            <text x="445" y="75" class="label-sm">Publish Config</text>
+            <path d="M 380 255 L 690 255" class="line" fill="none" />
+            <text x="535" y="250" text-anchor="middle" class="label-sm">Proxy Request</text>
+            <path d="M 690 265 L 380 265" class="line" fill="none" />
+            <text x="535" y="277" text-anchor="middle" class="label-sm">Response</text>
+            <path d="M 270 320 L 270 340" class="line" fill="none" />
+            <path d="M 530 320 L 530 340" class="line" fill="none" />
+            <path d="M 270 440 L 270 450" class="line" fill="none" />
+            <path d="M 530 440 L 530 450" class="line" fill="none" />
+            <path d="M 380 185 C 400 230, 400 230, 420 185" class="line line-dash" fill="none" />
+            <text x="400" y="225" text-anchor="middle" class="label-sm">Announce Task (Gossip)</text>
+            <path d="M 650 185 C 670 220, 670 220, 690 240" class="line line-dash" fill="none" />
+            <text x="675" y="220" class="label-sm">External API Calls</text>
+        </svg>
+
+        <div class="page-break"></div>
+
+        <h2 id="s3">3. The Sovereign Execution Layer</h2>
+        <p>Grapthway's most powerful innovation is its <strong>Sovereign Execution Layer</strong>. This is the protocol's answer to smart contracts, but with a crucial difference: logic is executed <strong>off-chain by the P2P network</strong>, not on-chain by a monolithic virtual machine. This architectural choice allows for Web2-level performance, scalability, and developer flexibility while using the L1 ledger for what it does best: settlement and security.</p>
+
+        <p>This layer is comprised of two primary execution modes: synchronous <strong>Pipelines</strong> and asynchronous <strong>Durable Workflows</strong>.</p>
+
+        <h3>3.1 Pipeline Engine (Synchronous Middleware)</h3>
+
+        <p>The Pipeline Engine is a powerful middleware system that intercepts every incoming API request. Developers define a <code class="code">PipelineConfig</code>, which is an ordered set of steps to be executed <strong>before (pre)</strong> and <strong>after (post)</strong> the main API request is proxied to the developer's service.</p>
+
+        <p><strong>Capabilities:</strong></p>
+        <ul>
+            <li><strong>Authentication & Authorization:</strong> Cryptographically verify request signatures</li>
+            <li><strong>Rate Limiting:</strong> Enforce per-user or per-IP limits</li>
+            <li><strong>Metering & Billing:</strong> Automatically charge users in GCU or custom tokens for API usage</li>
+            <li><strong>Data Transformation:</strong> Modify request/response payloads using expressions</li>
+            <li><strong>Multi-Service Orchestration:</strong> Fan-out requests to multiple services and merge responses</li>
+            <li><strong>Access Control:</strong> Require token ownership or minimum balance before granting access</li>
+        </ul>
+
+        <p>Pipelines are executed <strong>concurrently</strong> across multiple nodes in the network, with results validated through cryptographic consensus.</p>
+
+        <h3>3.2 Durable Workflow Engine (Asynchronous State Machines)</h3>
+
+        <p>For processes that are long-running, involve multiple independent steps, or must survive node failures, Grapthway provides the <strong>Durable Workflow Engine</strong>. A workflow is simply a pipeline flagged as <code class="code">isDurable: true</code>.</p>
+
+        <p><strong>Architecture:</strong></p>
+        <ul>
+            <li><strong>Coordinators:</strong> Manage workflow instance state and task assignment</li>
+            <li><strong>Workers:</strong> Execute individual workflow steps on behalf of coordinators</li>
+            <li><strong>DHT-Based Checkpointing:</strong> Workflow state is persisted to the DHT after each step</li>
+            <li><strong>Automatic Failover:</strong> If a coordinator goes offline, workers detect this, query the DHT for the last known state, and propose themselves as the new coordinator</li>
+        </ul>
+
+        <p><strong>Transactional Integrity:</strong></p>
+        <p>The workflow engine includes a robust <strong>rollback mechanism</strong> for economic operations. If a step that executed a ledger transaction fails in a subsequent, non-retryable step, the engine automatically initiates a series of compensating transactions:</p>
+        <ul>
+            <li><code class="code">RollbackDebitTransaction</code>: Retrieves funds from the recipient</li>
+            <li><code class="code">RollbackCreditTransaction</code>: Returns funds to the original sender</li>
+        </ul>
+
+        <p>This ensures workflows maintain transactional integrity even in the face of failures.</p>
+
+        <h3>3.3 Programmable Economy via Allowances</h3>
+
+        <p>To enable the programmatic economy required by pipelines and workflows, Grapthway's ledger includes two critical transaction types that function as the protocol's native "smart contract" alternative:</p>
+
+        <ul>
+            <li><strong>SetAllowanceTransaction:</strong> User grants permission for a spender (e.g., a workflow coordinator) to spend up to a specified amount on their behalf</li>
+            <li><strong>DelegatedTransferTransaction:</strong> The spender executes a transfer using the allowance, with cryptographic proof of authorization</li>
+        </ul>
+
+        <p>This powerful combination allows developers to build applications where users grant permission once, enabling automated, high-frequency, and secure microtransactions to occur in the background, driven by the logic in Pipelines and Workflows.</p>
+
+        <p><strong>Security is maintained because:</strong></p>
+        <ul>
+            <li>The spender's identity is cryptographically verified using their node's operational key</li>
+            <li>Allowances have explicit limits that cannot be exceeded</li>
+            <li>Even during a workflow's coordinator failover, the new coordinator must have its own valid allowance to act as the spender</li>
+        </ul>
+        
+        <div class="page-break"></div>
+
+        <h2 id="s4">4. Layer 1 Blockchain: High-Throughput Consensus</h2>
+        <p>The protocol implements a high-throughput Layer 1 ledger based on a lightweight and fault-tolerant <strong>Deterministic Proof-of-Stake (DPoS)</strong> consensus model. This approach provides a single source of truth for transaction ordering and state transitions, achieving mathematical consistency at high speeds while remaining resilient to changes in network topology.</p>
+
+        <h3>4.1 Deterministic Leader Selection</h3>
+
+        <p>The network operates with a single, temporary leader for each block. Unlike models that rely on a transient, "live" view of network connections, Grapthway's leader selection is driven entirely by <strong>on-chain state</strong>, making it mathematically deterministic and immune to network race conditions.</p>
+
+        <p><strong>Process:</strong></p>
+        <ol>
+            <li><strong>Validator Set Embedding:</strong> Each block contains a <code class="code">NextValidators</code> field, which is a deterministic snapshot of all validators eligible for the next block height</li>
+            <li><strong>Deterministic Sorting:</strong> Validators are sorted by their peer ID (lexicographically)</li>
+            <li><strong>Hash-Based Selection:</strong> A seed is generated from the previous block's hash and the current block height: <code class="code">seed = SHA256(prevBlockHash + height)</code></li>
+            <li><strong>Modulo Operation:</strong> The leader is selected using: <code class="code">leaderIndex = uint64(seed) % len(validators)</code></li>
+        </ol>
+
+        <p>Because the validator set is part of the previous block's immutable state, <strong>every honest node in the network is guaranteed to compute the exact same leader</strong> for the same block height. This completely eliminates the risk of network stalls or forks when nodes disconnect, as the source of truth for consensus is the chain itself, not the unreliable state of live network connections.</p>
+
+        <h3>4.2 Byzantine Fault Tolerance (BFT)</h3>
+
+        <p>The DPoS model provides Byzantine Fault Tolerance, guaranteeing safety and consistency as long as a supermajority of validators are honest and online. The protocol requires a quorum of at least <strong>⅔ + 1</strong> of the validators listed in the last block's <code class="code">NextValidators</code> set to approve a new block.</p>
+
+        <p>For a validator set of size <code class="code">N</code>, the network can tolerate <code class="code">f</code> failures where:</p>
+        <p><code class="code">N = 3f + 1</code></p>
+
+        <p><strong>Example:</strong> With 10 validators, the network can tolerate up to 3 Byzantine failures.</p>
+
+        <h3>4.3 Block Creation Pipeline</h3>
+
+        <p>To maximize efficiency and fully leverage modern multi-core hardware, the protocol uses a sophisticated, <strong>parallelized pipeline</strong> for block creation and finalization:</p>
+
+        <ol>
+            <li><strong>Ready Signal Broadcast:</strong> Leader broadcasts a "next-block-ready" signal and waits for ⅔ + 1 quorum acknowledgment (1.5s timeout)</li>
+            <li><strong>Parallel Transaction Selection:</strong> Worker goroutines concurrently scan 4096 mempool shards, selecting up to 100,000 valid transactions</li>
+            <li><strong>Batch Aggregation:</strong> Batchable transactions (transfers, debits, rewards) are aggregated into <code class="code">BatchAggregationTransaction</code> entries to reduce on-chain overhead</li>
+            <li><strong>Nonce Assignment:</strong> Parallel workers assign sequential nonces to transactions from the same sender</li>
+            <li><strong>Transaction Pre-Propagation Optimization:</strong> Leader checks local tracking state to determine if transactions are already propagated to ⅔+ validators. If quorum already achieved, skip propagation entirely (500-1500ms saved). Otherwise, query validators for missing transactions and propagate only what's needed. This optimization is 100% backward compatible—old nodes respond to queries normally, and the system gracefully falls back to full propagation if tracking data is unavailable.</li>
+            <li><strong>Pre-Proposal Broadcast:</strong> Leader gossips a <code class="code">PreBlockProposal</code> containing all transactions with assigned nonces</li>
+            <li><strong>Validator Pre-Validation:</strong> Each validator independently recreates the batches to verify determinism, then sends a cryptographically signed <code class="code">PreBlockAck</code> to the leader via direct libp2p stream</li>
+            <li><strong>ACK Collection:</strong> Leader waits for ⅔ + 1 pre-block ACKs (1.5s timeout)</li>
+            <li><strong>Simulation & Filtering:</strong> Leader simulates block execution, filtering out transactions that would fail (nonce gaps, insufficient balances)</li>
+            <li><strong>Block Finalization:</strong> Leader creates the final block with valid transactions, calculates block hash, and broadcasts via shredded gossip (4KB chunks)</li>
+            <li><strong>Parallel Block Processing:</strong> All validators receive shreds, reassemble the block, and execute it in parallel worker pools</li>
+        </ol>
+
+        <p><strong>Performance Characteristics:</strong></p>
+        <ul>
+            <li><strong>Block Time:</strong> Target 2.5 seconds maximum</li>
+            <li><strong>Minimum Transactions Per Block:</strong> 10,000 (triggers early block creation signal)</li>
+            <li><strong>Transaction Expiration:</strong> 60 seconds (prevents mempool bloat)</li>
+            <li><strong>Sharding:</strong> 4096 mempool shards enable concurrent processing across CPU cores</li>
+        </ul>
+
+        <h4>4.3.1 Transaction Pre-Propagation Optimization</h4>
+        <p>To further reduce block production latency, the protocol implements an intelligent transaction pre-propagation tracking system. This optimization leverages the fact that transactions naturally propagate through the network via gossip before they are included in blocks.</p>
+
+        <p><strong>How It Works:</strong></p>
+        <ul>
+            <li><strong>Passive Tracking:</strong> Each validator maintains an in-memory <code class="code">txPropagationState</code> map that tracks which peers have received which transactions via gossip</li>
+            <li><strong>Smart Propagation Check:</strong> When preparing a block, the leader queries its local tracking state to determine if ⅔+ validators already possess all required transactions</li>
+            <li><strong>Conditional Skip:</strong> If quorum is already achieved, the leader skips the transaction propagation phase entirely, saving 500-1500ms per block</li>
+            <li><strong>Graceful Fallback:</strong> If tracking data is incomplete or quorum is not met, the system falls back to the original propagation method using <code class="code">RequestPeerKnownTxs</code> P2P calls</li>
+        </ul>
+
+        <svg viewBox="0 0 900 800" class="architecture-diagram" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <marker id="arrow-diag" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                    <path d="M 0 0 L 10 5 L 0 10 z" fill="#333" />
+                </marker>
+            </defs>
+            <style>
+                .label { font-size: 13px; font-family: 'Inter', sans-serif; fill: #333; }
+                .label-bold { font-weight: bold; font-size: 14px; }
+                .label-sm { font-size: 11px; fill: #555; }
+                .label-xs { font-size: 10px; fill: #555; }
+                .box { stroke: #333; stroke-width: 1.5; fill: #fff; }
+                .box-blue { fill: #e9f5ff; stroke: #a5d8ff; }
+                .box-green { fill: #e6f9f0; stroke: #a3e9d1; }
+                .box-orange { fill: #fff4e6; stroke: #ffe8cc; }
+                .box-purple { fill: #f3e8ff; stroke: #e0cffc; }
+                .box-yellow { fill: #fff9db; stroke: #ffe066; }
+                .line { stroke: #333; stroke-width: 1.5; marker-end: url(#arrow-diag); }
+                .line-dash { stroke-dasharray: 5 3; }
+                .title { font-size: 20px; font-weight: bold; text-anchor: middle; font-family: 'Inter', sans-serif; }
+            </style>
+        
+            <text x="450" y="30" class="title">Grapthway Block Creation & Transaction Flow</text>
+        
+            <!-- Columns -->
+            <text x="85" y="70" class="label-bold" text-anchor="middle">User / Client</text>
+            <line x1="170" y1="50" x2="170" y2="780" style="stroke:#ccc; stroke-width:1;"/>
+            <text x="310" y="70" class="label-bold" text-anchor="middle">Server Node</text>
+            <line x1="450" y1="50" x2="450" y2="780" style="stroke:#ccc; stroke-width:1;"/>
+            <text x="590" y="70" class="label-bold" text-anchor="middle">Block Leader</text>
+            <line x1="730" y1="50" x2="730" y2="780" style="stroke:#ccc; stroke-width:1;"/>
+            <text x="815" y="70" class="label-bold" text-anchor="middle">Validator Node</text>
+        
+            <!-- User Action -->
+            <rect x="25" y="90" width="120" height="50" rx="5" class="box box-green" />
+            <text x="85" y="120" text-anchor="middle" class="label">Submit Transfer</text>
+            <path d="M 145 115 L 220 115" class="line" fill="none" />
+            <text x="180" y="110" class="label-sm">API Request</text>
+            
+            <!-- Server Node - Ledger Aggregator -->
+            <rect x="220" y="90" width="180" height="70" rx="5" class="box box-blue" />
+            <text x="310" y="115" text-anchor="middle" class="label-bold">Ledger Aggregator</text>
+            <text x="310" y="135" text-anchor="middle" class="label-sm">(Collects API fees)</text>
+            <path d="M 310 160 L 310 190" class="line" fill="none" />
+            <text x="315" y="180" class="label-sm" text-anchor="start">Flush Batch</text>
+        
+            <!-- Server Node - Mempool -->
+            <rect x="220" y="190" width="180" height="100" rx="5" class="box box-orange" />
+            <text x="310" y="215" text-anchor="middle" class="label-bold">Mempool</text>
+            <text x="310" y="235" text-anchor="middle" class="label-sm">Raw Transactions:</text>
+            <text x="310" y="250" text-anchor="middle" class="label-sm">- TransferTransaction</text>
+            <text x="310" y="265" text-anchor="middle" class="label-sm">- DebitTransaction</text>
+            <text x="310" y="280" text-anchor="middle" class="label-sm">- RewardTransaction</text>
+            <path d="M 400 240 L 500 240" class="line line-dash" fill="none" />
+            <text x="450" y="235" class="label-sm" text-anchor="middle">Gossip</text>
+            
+            <!-- Track propagation on receive -->
+            <rect x="780" y="200" width="110" height="80" rx="5" class="box box-yellow" />
+            <text x="835" y="225" text-anchor="middle" class="label-bold">Track TX</text>
+            <text x="835" y="240" text-anchor="middle" class="label-sm">Propagation</text>
+            <text x="835" y="255" text-anchor="middle" class="label-xs">(in-memory)</text>
+            <text x="835" y="270" text-anchor="middle" class="label-xs">txID → peerID</text>
+        
+            <!-- Block Leader Actions -->
+            <rect x="500" y="130" width="180" height="60" rx="5" class="box box-purple" />
+            <text x="590" y="160" text-anchor="middle" class="label">1. Wait for</text>
+            <text x="590" y="175" text-anchor="middle" class="label-sm">`NextBlockReady`</text>
+            <path d="M 735 160 L 680 160" class="line" fill="none"/>
+            <text x="705" y="155" class="label-sm" text-anchor="middle">Signal</text>
+        
+            <!-- NEW: Pre-Propagation Check -->
+            <rect x="500" y="210" width="180" height="90" rx="5" class="box box-yellow" />
+            <text x="590" y="235" text-anchor="middle" class="label">2. Check TX Propagation</text>
+            <text x="590" y="255" text-anchor="middle" class="label-sm">If ≥ 2/3 validators have TXs:</text>
+            <text x="590" y="270" text-anchor="middle" class="label-bold">Skip Propagation</text>
+            <text x="590" y="285" text-anchor="middle" class="label-xs">(500-1500ms saved ⚡)</text>
+            <path d="M 680 255 L 780 255" class="line line-dash" fill="none"/>
+            <text x="730" y="250" class="label-xs" text-anchor="middle">Query if needed</text>
+        
+            <rect x="500" y="320" width="180" height="80" rx="5" class="box box-purple" />
+            <text x="590" y="345" text-anchor="middle" class="label">3. Create & Broadcast</text>
+            <text x="590" y="365" text-anchor="middle" class="label-bold">PreBlockProposal</text>
+            <text x="590" y="380" text-anchor="middle" class="label-sm">(with ProposalID)</text>
+            <path d="M 680 360 L 780 360" class="line" fill="none"/>
+            <text x="730" y="355" class="label-sm" text-anchor="middle">Broadcast</text>
+        
+            <rect x="500" y="430" width="180" height="80" rx="5" class="box box-purple" />
+            <text x="590" y="455" text-anchor="middle" class="label">4. Receive Quorum of</text>
+            <text x="590" y="475" text-anchor="middle" class="label-bold">PreBlockAcks</text>
+            <text x="590" y="490" text-anchor="middle" class="label-sm">(from Validators)</text>
+            <path d="M 780 460 L 680 460" class="line" fill="none"/>
+            <text x="730" y="455" class="label-sm" text-anchor="middle">Send Ack</text>
+        
+            <rect x="500" y="550" width="180" height="180" rx="5" class="box box-purple" />
+            <text x="590" y="575" text-anchor="middle" class="label">5. Finalize & Broadcast</text>
+            <text x="590" y="595" text-anchor="middle" class="label-bold">Final Block</text>
+            <text x="590" y="615" text-anchor="middle" class="label-sm">Contains:</text>
+            <text x="590" y="635" text-anchor="middle" class="label-sm">- Non-batchable Txs</text>
+            <text x="590" y="655" text-anchor="middle" class="label-bold">- BatchAggregation</text>
+            <text x="590" y="675" text-anchor="middle" class="label-bold">  Transaction</text>
+            <text x="590" y="695" text-anchor="middle" class="label-sm">- NextValidators Set</text>
+            <path d="M 680 630 L 780 630" class="line" fill="none"/>
+            <text x="730" y="625" class="label-sm" text-anchor="middle">Broadcast Shreds</text>
+        
+            <!-- Validator Actions -->
+            <rect x="780" y="380" width="110" height="80" rx="5" class="box box-green" />
+            <text x="835" y="405" text-anchor="middle" class="label">Pre-Validate</text>
+            <text x="835" y="425" text-anchor="middle" class="label">& Store in</text>
+            <text x="835" y="440" text-anchor="middle" class="label-bold">Cache</text>
+            
+            <rect x="780" y="660" width="110" height="80" rx="5" class="box box-green" />
+            <text x="835" y="685" text-anchor="middle" class="label">Check Cache</text>
+            <text x="835" y="705" text-anchor="middle" class="label">& Instantly</text>
+            <text x="835" y="720" text-anchor="middle" class="label-bold">Commit</text>
+        </svg>
+
+        <h3>4.4 Parallel State Execution</h3>
+
+        <p>The entire ledger is engineered to leverage multi-core architectures for maximum performance. Computationally intensive tasks—such as transaction selection, batch creation, nonce assignment, and state validation—are executed by <strong>pools of worker goroutines</strong>.</p>
+
+        <p><strong>Measured Performance:</strong></p>
+        <p>In load tests on a modest 3-node cluster, with each node allocated only <strong>2 vCPUs and 2GB of RAM</strong>, the Grapthway ledger consistently processed over <strong>~500 token transfer transactions per second (TPS)</strong>.</p>
+
+        <p>This headline number understates the true performance. Each transfer triggers corresponding debit and reward operations, which are aggregated at the block level. This means the ledger was successfully handling approximately <strong>~1000 logical operations per second (OPS)</strong>, all of which were efficiently bundled on-chain. This is a direct result of the protocol's end-to-end parallel processing architecture, with tests indicating a processing capacity of roughly <strong>500 operations per second per CPU core</strong>.</p>
+
+        <p>This design is built for <strong>vertical scalability</strong>. For instance, scaling a node to 64 CPU cores would theoretically provide a 32x increase in computational capacity, potentially unlocking throughput in the thousands of TPS.</p>
+
+        <div class="page-break"></div>
+
+        <h2 id="s5">5. Native Token System</h2>
+        <p>Grapthway includes a production-grade, <strong>fully on-chain token system</strong> that provides ERC-20-like functionality without requiring developers to deploy custom smart contracts. This system is deeply integrated into the L1 blockchain and supports both the protocol's native GCU token and user-created custom tokens.</p>
+
+        <h3>5.1 Token Types</h3>
+        <p>The protocol supports three primary token types:</p>
+        <ul>
+            <li><strong>FUNGIBLE:</strong> Standard divisible tokens (like ERC-20)</li>
+            <li><strong>NFT:</strong> Non-fungible tokens with unique identifiers</li>
+            <li><strong>RWA:</strong> Real-world asset representations</li>
+        </ul>
+
+        <h3>5.2 Core Token Operations</h3>
+        <p>All token operations are executed as dedicated transaction types on the L1 blockchain:</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Transaction Type</th>
+                    <th>Description</th>
+                    <th>Signer Required</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code class="code">TOKEN_CREATE</code></td>
+                    <td>Create a new token with initial supply and configuration</td>
+                    <td>Creator</td>
+                </tr>
+                <tr>
+                    <td><code class="code">TOKEN_TRANSFER</code></td>
+                    <td>Transfer tokens from one address to another</td>
+                    <td>Sender</td>
+                </tr>
+                <tr>
+                    <td><code class="code">TOKEN_APPROVE</code></td>
+                    <td>Set allowance for a spender to transfer on your behalf</td>
+                    <td>Owner</td>
+                </tr>
+                <tr>
+                    <td><code class="code">TOKEN_REVOKE</code></td>
+                    <td>Remove an existing allowance</td>
+                    <td>Owner</td>
+                </tr>
+                <tr>
+                    <td><code class="code">TOKEN_MINT</code></td>
+                    <td>Create new tokens (if enabled and authorized)</td>
+                    <td>Creator</td>
+                </tr>
+                <tr>
+                    <td><code class="code">TOKEN_BURN</code></td>
+                    <td>Permanently destroy tokens</td>
+                    <td>Holder</td>
+                </tr>
+                <tr>
+                    <td><code class="code">TOKEN_CONFIG_BURN</code></td>
+                    <td>Update burn configuration</td>
+                    <td>Creator</td>
+                </tr>
+                <tr>
+                    <td><code class="code">TOKEN_CONFIG_MINT</code></td>
+                    <td>Update mint configuration</td>
+                    <td>Creator</td>
+                </tr>
+                <tr>
+                    <td><code class="code">TOKEN_LOCK</code></td>
+                    <td>Permanently lock burn/mint configuration</td>
+                    <td>Creator</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3>5.3 Token Metadata</h3>
+        <p>Each token stores comprehensive on-chain metadata:</p>
+        <ul>
+            <li><strong>Address:</strong> Unique deterministic identifier (<code class="code">0xTKN{hash}</code>)</li>
+            <li><strong>Name & Ticker:</strong> Human-readable identifiers</li>
+            <li><strong>Decimals:</strong> Precision (0-6 decimal places supported)</li>
+            <li><strong>Total Supply:</strong> Current circulating supply (mutable if minting enabled)</li>
+            <li><strong>Initial Supply:</strong> Original supply at creation (immutable)</li>
+            <li><strong>Creator:</strong> Address that created the token</li>
+            <li><strong>Token Type:</strong> FUNGIBLE, NFT, or RWA</li>
+            <li><strong>Custom Metadata:</strong> JSON string (max 1KB) for additional data</li>
+        </ul>
+
+        <h3>5.4 Configurable Economic Mechanisms</h3>
+        <p>Tokens can be configured with sophisticated economic models:</p>
+
+        <h4>Burn Configuration</h4>
+<pre><code>{
+  "enabled": true,
+  "burnRatePerTx": 0.5,  // 0.5% burned per transfer
+  "manualBurn": true      // Allow manual burn operations
+}</code></pre>
+        <ul>
+            <li><strong>Automatic Burn:</strong> Percentage of each transfer that is permanently destroyed</li>
+            <li><strong>Manual Burn:</strong> Token holders can explicitly burn their holdings</li>
+        </ul>
+
+        <div class="page-break"></div>
+
+        <h4>Mint Configuration</h4>
+<pre><code>{
+  "enabled": true,
+  "mintRatePerTx": 0.1,  // 0.1% minted per transfer
+  "manualMint": true      // Allow creator to mint
+}</code></pre>
+        <ul>
+            <li><strong>Automatic Mint:</strong> Percentage of each transfer that generates new tokens</li>
+            <li><strong>Manual Mint:</strong> Creator can explicitly mint new tokens to any address</li>
+        </ul>
+
+        <h4>Configuration Locking</h4>
+        <p>Token creators can <strong>permanently lock</strong> burn/mint configurations by submitting a <code class="code">TOKEN_LOCK</code> transaction. Once locked, the configuration becomes immutable, providing strong guarantees to token holders about future supply dynamics.</p>
+
+        <h3>5.5 Allowance System (Delegated Transfers)</h3>
+        <p>The token system includes a full allowance mechanism identical to ERC-20's <code class="code">approve</code> and <code class="code">transferFrom</code> pattern:</p>
+        <ol>
+            <li><strong>Owner Approves Spender:</strong> <code class="code">TOKEN_APPROVE</code> transaction sets an allowance</li>
+            <li><strong>Spender Executes Transfer:</strong> Spender submits a transaction with:
+                <ul>
+                    <li><code class="code">from</code>: The token owner's address</li>
+                    <li><code class="code">to</code>: Destination address</li>
+                    <li><code class="code">amount</code>: Amount to transfer</li>
+                    <li><code class="code">spender</code>: The spender's address (verified against signature)</li>
+                </ul>
+            </li>
+            <li><strong>Ledger Validation:</strong> The ledger verifies:
+                <ul>
+                    <li>Spender has sufficient allowance</li>
+                    <li>Owner has sufficient balance</li>
+                    <li>Transaction is cryptographically signed by the spender</li>
+                </ul>
+            </li>
+            <li><strong>Allowance Deduction:</strong> The used amount is subtracted from the allowance</li>
+        </ol>
+        <p>This enables <strong>automated payment flows</strong> where users grant permission once, and workflows or pipelines can execute transfers on their behalf without requiring user interaction for each transaction.</p>
+
+        <h3>5.6 Comprehensive Transaction History</h3>
+        <p>All token operations are indexed with dual time-series indexes for efficient querying:</p>
+        <ul>
+            <li><strong>Sender Index:</strong> <code class="code">tidx-token-from-{address}-{timestamp}-{txhash}</code></li>
+            <li><strong>Receiver Index:</strong> <code class="code">tidx-token-to-{address}-{timestamp}-{txhash}</code></li>
+        </ul>
+        <p>This allows O(log n) retrieval of:</p>
+        <ul>
+            <li>All tokens received by an address</li>
+            <li>All tokens sent from an address</li>
+            <li>Complete transaction history for a specific token</li>
+            <li>Allowance change events (approvals and revocations)</li>
+        </ul>
+        <p>Each history entry includes:</p>
+        <ul>
+            <li>Operation type (CREATE, TRANSFER, MINT, BURN, APPROVE)</li>
+            <li>Token address and metadata (name, ticker, decimals)</li>
+            <li>Sender and receiver addresses</li>
+            <li>Amount (both raw micro-units and human-readable)</li>
+            <li>Timestamp and transaction hash</li>
+        </ul>
+
+        <h3>5.7 Token Address Generation</h3>
+        <p>Token addresses are <strong>deterministically generated</strong> using:</p>
+        <p><code class="code">address = "0xTKN" + SHA256(creator + name + ticker + timestamp)[:18]</code></p>
+        <p>This ensures:</p>
+        <ul>
+            <li>Globally unique identifiers</li>
+            <li>No address collisions</li>
+            <li>Cryptographic verification of token origin</li>
+        </ul>
+
+        <div class="page-break"></div>
+
+        <h3>5.8 Storage Architecture</h3>
+        <p>The token system uses BadgerDB with prefix-based key spaces for efficient queries:</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Prefix</th>
+                    <th>Purpose</th>
+                    <th>Example Key</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code class="code">token-</code></td>
+                    <td>Token metadata</td>
+                    <td><code class="code">token-0xTKN1234...</code></td>
+                </tr>
+                <tr>
+                    <td><code class="code">token-bal-</code></td>
+                    <td>Balances</td>
+                    <td><code class="code">token-bal-{token}-{owner}</code></td>
+                </tr>
+                <tr>
+                    <td><code class="code">token-allow-</code></td>
+                    <td>Allowances</td>
+                    <td><code class="code">token-allow-{token}-{owner}-{spender}</code></td>
+                </tr>
+                <tr>
+                    <td><code class="code">token-owner-</code></td>
+                    <td>Ownership index</td>
+                    <td><code class="code">token-owner-{owner}-{token}</code></td>
+                </tr>
+                <tr>
+                    <td><code class="code">tidx-token-from-</code></td>
+                    <td>Sender history</td>
+                    <td><code class="code">tidx-token-from-{addr}-{ts}-{txhash}</code></td>
+                </tr>
+                <tr>
+                    <td><code class="code">tidx-token-to-</code></td>
+                    <td>Receiver history</td>
+                    <td><code class="code">tidx-token-to-{addr}-{ts}-{txhash}</code></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3>5.9 Integration with GCU Token</h3>
+        <p>The protocol's native <strong>GCU token</strong> uses the same underlying infrastructure as custom tokens, ensuring consistency across the economic model. All GCU operations (transfers, staking, allowances) follow identical validation and execution paths.</p>
+
+        <div class="page-break"></div>
+        
+        <h2 id="s6">6. Economic Model</h2>
+        <p>The Grapthway economy is designed to be sustainable, fair, and provide predictable costs for developers, aligning the incentives of all network participants.</p>
+
+        <h3>6.1 The GCU Token</h3>
+        <p>The <strong>Grapthway Compute Unit (GCU)</strong> is the native utility token of the protocol. It is used for all value transfer within the ecosystem:</p>
+        <ul>
+            <li><strong>Precision:</strong> 1 GCU = 1,000,000 micro-GCU (6 decimals)</li>
+            <li><strong>Internal Representation:</strong> All calculations use <code class="code">uint64</code> integers to ensure deterministic results across all nodes</li>
+            <li><strong>Use Cases:</strong>
+                <ul>
+                    <li>Pay for API usage and compute resources</li>
+                    <li>Stake to become a validator</li>
+                    <li>Pay network fees for transactions</li>
+                    <li>Receive rewards as a node operator</li>
+                </ul>
+            </li>
+        </ul>
+
+        <h3>6.2 Two-Tier Aggregation Model</h3>
+        <p>The protocol uses an advanced two-tier aggregation model to achieve high throughput and low fees:</p>
+
+        <h4>Tier 1: Off-Chain Aggregation (Developer Usage Fees)</h4>
+        <p>When developers integrate their services with Grapthway, every API call to their service triggers automated metering:</p>
+        <ol>
+            <li>User makes an API request to <code class="code">/{dev_address}/{service}/graphql</code></li>
+            <li>The gateway node processing the request:
+                <ul>
+                    <li>Executes any pre-pipelines (auth, rate limiting, etc.)</li>
+                    <li>Proxies the request to the developer's backend</li>
+                    <li>Executes any post-pipelines (data transformation, billing, etc.)</li>
+                </ul>
+            </li>
+            <li>The node accumulates usage metrics in memory:
+                <ul>
+                    <li>Developer account debited (charged for compute)</li>
+                    <li>Node operator account credited (reward for execution)</li>
+                </ul>
+            </li>
+            <li>Every 10,000 aggregated operations, the node submits a single <code class="code">BatchAggregationTransaction</code> to the blockchain containing:
+                <ul>
+                    <li><code class="code">Debits: {"dev_address": 50000}</code> (total charges)</li>
+                    <li><code class="code">Rewards: {"node_address": 40000}</code> (80% to operator)</li>
+                    <li><code class="code">NetworkFee: 10000</code> (20% to network)</li>
+                    <li><code class="code">AggregatedTxIDs: [...]</code> (proof of included operations)</li>
+                </ul>
+            </li>
+        </ol>
+        <p><strong>Economic Split:</strong></p>
+        <ul>
+            <li><strong>80%</strong> distributed to node operators who processed the requests</li>
+            <li><strong>20%</strong> allocated to network fees (burned or redistributed to validators)</li>
+        </ul>
+
+        <h4>Tier 2: On-Chain Batch Processing</h4>
+        <p>When the leader creates a block, it processes <code class="code">BatchAggregationTransaction</code> entries and updates account balances in a single atomic operation. This reduces on-chain overhead from potentially millions of individual transactions to hundreds of batch entries per block.</p>
+
+        <h3>6.3 Stake Requirements & Validation</h3>
+        <p>Node Operators are required to stake GCU, acting as a security bond. The amount of required stake is proportional to the hardware resources (specifically CPU cores) the node allocates to the network:</p>
+        <p><strong>Formula:</strong></p>
+        <p><code class="code">Required Stake = CPU Cores × 100 GCU</code></p>
+        <p><strong>Examples:</strong></p>
+        <ul>
+            <li>2 vCPU node: 200 GCU minimum stake</li>
+            <li>8 vCPU node: 800 GCU minimum stake</li>
+            <li>64 vCPU node: 6,400 GCU minimum stake</li>
+        </ul>
+
+        <p><strong>Stake Lifecycle:</strong></p>
+        <ol>
+            <li><strong>Deposit:</strong> <code class="code">StakeDepositTransaction</code> moves GCU from spendable balance to stake pool</li>
+            <li><strong>Assign:</strong> <code class="code">StakeAssignTransaction</code> allocates stake to a specific node peer ID</li>
+            <li><strong>Unassign:</strong> <code class="code">StakeUnassignTransaction</code> removes stake from a node and begins unbonding period</li>
+            <li><strong>Withdrawal:</strong> After 24-hour unbonding period, <code class="code">StakeWithdrawalTransaction</code> returns GCU to spendable balance</li>
+        </ol>
+        <p>A node operator's stake is tied to their permanent <strong>Owner Wallet</strong>, not the node's temporary operational key (Peer ID). This allows operators to rotate node infrastructure without losing validator eligibility.</p>
+
+        <h3>6.4 Peer Validation Handshake</h3>
+        <p>The protocol's P2P handshake is a strict vetting process where an established peer verifies a new node's hardware claims and its total allocated stake against the ledger:</p>
+        <ol>
+            <li>New node connects and presents:
+                <ul>
+                    <li>Peer ID (derived from operational key)</li>
+                    <li>Owner wallet address</li>
+                    <li>Claimed CPU cores</li>
+                    <li>Cryptographic signature linking peer ID to owner wallet</li>
+                </ul>
+            </li>
+            <li>Existing peer queries the ledger for:
+                <ul>
+                    <li>Total stake allocated to this peer ID</li>
+                    <li>Required stake based on claimed hardware</li>
+                </ul>
+            </li>
+            <li>If <code class="code">actual_stake < required_stake</code>, the connection is rejected</li>
+            <li>If valid, the node is added to the peer list and eligible for validator selection</li>
+        </ol>
+        <p>This cryptographically secured handshake ensures all participating nodes are economically bound to the network's rules.</p>
+
+        <h3>6.5 Developer Penalty Box</h3>
+        <p>To prevent network abuse, the protocol implements a <code class="code">DeveloperPenaltyBox</code>. If a developer's account balance is insufficient to cover their aggregated API usage fees, they are temporarily placed in this penalty box and blocked from making further requests until their balance is replenished.</p>
+        <p>This provides a practical, real-time economic safeguard for the network without requiring upfront deposits or complex escrow mechanisms.</p>
+        
+        <div class="page-break"></div>
+
+        <h2 id="s7">7. Performance & Scalability</h2>
+        
+        <h3>7.1 Measured Benchmarks</h3>
+        <p>Grapthway is not a theoretical concept; it is a live, tested network. In load tests on a modest 3-node cluster, with each node allocated only <strong>2 vCPUs and 2GB of RAM</strong>, the Grapthway ledger consistently processed over:</p>
+        <ul>
+            <li><strong>~500 TPS</strong> (token transfer transactions per second)</li>
+            <li><strong>~1000 OPS</strong> (logical operations per second, including debits and rewards)</li>
+            <li><strong>~500 OPS per CPU core</strong></li>
+        </ul>
+
+        <h3>7.2 Scalability Characteristics</h3>
+        <p><strong>Vertical Scalability (Per-Node Performance):</strong></p>
+        <ul>
+            <li>Performance scales near-linearly with CPU cores</li>
+            <li>64-core node: Theoretical 32x increase (16,000+ TPS potential)</li>
+            <li>Bounded by network latency, not CPU</li>
+        </ul>
+        <p><strong>Horizontal Scalability (Network Size):</strong></p>
+        <ul>
+            <li>GossipSub protocol efficiently propagates state to hundreds of nodes</li>
+            <li>Shredded block broadcasting (4KB chunks) reduces bandwidth requirements</li>
+            <li>Direct libp2p streams for consensus minimize broadcast overhead</li>
+        </ul>
+
+        <h3>7.3 Optimization Techniques</h3>
+        <ul>
+            <li><strong>Mempool Sharding:</strong> 4096 shards enable lock-free concurrent access</li>
+            <li><strong>Account Lock Sharding:</strong> Per-address locks prevent global contention</li>
+            <li><strong>Live Account State Cache:</strong> In-memory sync.Map for hot accounts</li>
+            <li><strong>Parallel Nonce Assignment:</strong> Worker pools assign nonces concurrently</li>
+            <li><strong>Batch Transaction Aggregation:</strong> Reduces on-chain footprint by 100x</li>
+            <li><strong>BadgerDB Tuning:</strong> Dynamic compactors scale with CPU count</li>
+            <li><strong>Cgroup-Aware Monitoring:</strong> Accurate resource metering in containers</li>
+        </ul>
+
+        <div class="page-break"></div>
+        
+        <h2 id="s8">8. Security Model</h2>
+        
+        <h3>8.1 Cryptographic Foundations</h3>
+        <ul>
+            <li><strong>Signature Scheme:</strong> ECDSA with secp256k1 curve (same as Bitcoin/Ethereum)</li>
+            <li><strong>Hash Function:</strong> SHA-256 for all cryptographic operations</li>
+            <li><strong>Key Derivation:</strong> Deterministic address generation from public keys</li>
+            <li><strong>Message Authentication:</strong> All P2P messages include HMAC signatures</li>
+        </ul>
+
+        <h3>8.2 Transaction Validation</h3>
+        <p>Every transaction undergoes multi-layered validation:</p>
+        <ol>
+            <li><strong>Cryptographic Verification:</strong>
+                <ul>
+                    <li>Signature matches sender's public key</li>
+                    <li>Transaction ID is correctly derived from content</li>
+                </ul>
+            </li>
+            <li><strong>Nonce Validation:</strong>
+                <ul>
+                    <li>For user transactions: <code class="code">tx.nonce == account.nonce + 1</code></li>
+                    <li>Prevents replay attacks</li>
+                    <li>Ensures total ordering of operations</li>
+                </ul>
+            </li>
+            <li><strong>Balance Validation:</strong>
+                <ul>
+                    <li>Sender has sufficient funds (including pending operations)</li>
+                    <li>For delegated transfers: spender has sufficient allowance</li>
+                </ul>
+            </li>
+            <li><strong>Timestamp Validation:</strong>
+                <ul>
+                    <li>Transaction is less than 60 seconds old</li>
+                    <li>Prevents mempool bloat from stale transactions</li>
+                </ul>
+            </li>
+            <li><strong>State Simulation:</strong>
+                <ul>
+                    <li>Block leader simulates execution before finalization</li>
+                    <li>Filters out transactions that would fail</li>
+                </ul>
+            </li>
+        </ol>
+
+        <h3>8.3 Byzantine Fault Tolerance</h3>
+        <p>The consensus mechanism guarantees safety under the following assumptions:</p>
+        <ul>
+            <li><strong>Honest Supermajority:</strong> At least ⅔ + 1 of validators are honest</li>
+            <li><strong>Synchronous Network:</strong> Messages are delivered within bounded time (2.5s)</li>
+            <li><strong>Deterministic State:</strong> All honest nodes compute identical state transitions</li>
+        </ul>
+        <p><strong>Attack Resistance:</strong></p>
+        <ul>
+            <li><strong>Double Spend:</strong> Impossible due to nonce-based ordering and single-leader blocks</li>
+            <li><strong>Long-Range Attacks:</strong> Mitigated by checkpointing and social consensus on genesis</li>
+            <li><strong>Sybil Attacks:</strong> Prevented by stake requirements proportional to hardware</li>
+            <li><strong>Spam Attacks:</strong> Throttled by transaction expiration and mempool bounds</li>
+        </ul>
+
+        <h3>8.4 Stake Slashing (Future Enhancement)</h3>
+        <p>While not currently implemented, the architecture supports future stake slashing for Byzantine behavior:</p>
+        <ul>
+            <li>Leader proposes invalid block → Lose X% of stake</li>
+            <li>Validator signs conflicting blocks → Lose Y% of stake</li>
+            <li>Node consistently offline → Unbonding period extended</li>
+        </ul>
+
+        <div class="page-break"></div>
+
+        <h2 id="s9">9. Comparison with Existing Platforms</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Feature</th>
+                    <th>Grapthway</th>
+                    <th>AWS/GCP</th>
+                    <th>Ethereum</th>
+                    <th>Solana</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Architecture</strong></td>
+                    <td style="background:#d4edda;">Hybrid L1 + Off-Chain</td>
+                    <td>Centralized Servers</td>
+                    <td>Monolithic Blockchain</td>
+                    <td>Monolithic Blockchain</td>
+                </tr>
+                <tr>
+                    <td><strong>TPS</strong></td>
+                    <td style="background:#d4edda;">500+ (2 vCPU)</td>
+                    <td style="background:#d4edda;">Unlimited</td>
+                    <td style="background:#f8d7da;">~15</td>
+                    <td style="background:#fff3cd;">~65,000 theoretical</td>
+                </tr>
+                <tr>
+                    <td><strong>Finality Time</strong></td>
+                    <td style="background:#d4edda;">2.5 seconds</td>
+                    <td style="background:#d4edda;">Instant</td>
+                    <td style="background:#f8d7da;">~13 minutes</td>
+                    <td style="background:#fff3cd;">~400ms</td>
+                </tr>
+                <tr>
+                    <td><strong>Developer Experience</strong></td>
+                    <td style="background:#d4edda;">Use any language/stack</td>
+                    <td style="background:#d4edda;">Excellent</td>
+                    <td style="background:#f8d7da;">Poor (Solidity only)</td>
+                    <td style="background:#f8d7da;">Poor (Rust only)</td>
+                </tr>
+                <tr>
+                    <td><strong>Smart Contracts</strong></td>
+                    <td style="background:#d4edda;">Off-chain (Pipelines/Workflows)</td>
+                    <td>N/A</td>
+                    <td style="background:#f8d7da;">On-chain (EVM)</td>
+                    <td style="background:#f8d7da;">On-chain (BPF)</td>
+                </tr>
+                <tr>
+                    <td><strong>Cost Model</strong></td>
+                    <td style="background:#d4edda;">Predictable (fixed GCU)</td>
+                    <td style="background:#fff3cd;">Variable (usage-based)</td>
+                    <td style="background:#f8d7da;">Volatile (gas market)</td>
+                    <td style="background:#f8d7da;">Volatile (priority fees)</td>
+                </tr>
+                <tr>
+                    <td><strong>Sovereignty</strong></td>
+                    <td style="background:#d4edda;">High (Protocol Owned)</td>
+                    <td style="background:#f8d7da;">Low (Platform Owned)</td>
+                    <td style="background:#d4edda;">High (Protocol Owned)</td>
+                    <td style="background:#d4edda;">High (Protocol Owned)</td>
+                </tr>
+                <tr>
+                    <td><strong>Censorship Resistance</strong></td>
+                    <td style="background:#d4edda;">High (P2P)</td>
+                    <td style="background:#f8d7da;">Low (Central Control)</td>
+                    <td style="background:#d4edda;">High (Decentralized)</td>
+                    <td style="background:#fff3cd;">Medium (Validator Concentration)</td>
+                </tr>
+                <tr>
+                    <td><strong>Native Tokens</strong></td>
+                    <td style="background:#d4edda;">Built-in (no deployment)</td>
+                    <td>N/A</td>
+                    <td style="background:#f8d7da;">Smart contract required</td>
+                    <td style="background:#f8d7da;">Smart contract required</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="page-break"></div>
+        
+        <h2 id="s10">10. Use Cases</h2>
+
+        <h3>10.1 Decentralized API Marketplaces</h3>
+        <p>Developers register REST/GraphQL APIs with automatic metering, authentication, and payment collection. Users pay per-request in GCU or custom tokens.</p>
+
+        <h3>10.2 Cross-Service Orchestration</h3>
+        <p>Build complex workflows that coordinate multiple independent services (payment processing, AI inference, data storage) with automatic rollback on failures.</p>
+
+        <h3>10.3 Token-Gated Content</h3>
+        <p>Require users to hold a minimum balance of a specific token before granting API access. Useful for membership platforms, premium content, or DAO governance.</p>
+
+        <h3>10.4 Decentralized Finance (DeFi)</h3>
+        <p>Create custom tokens with configurable burn/mint mechanics, implement automated trading bots using allowances, or build lending protocols with workflow-based liquidation.</p>
+
+        <h3>10.5 Supply Chain Tracking</h3>
+        <p>Use RWA tokens to represent physical goods, with workflows tracking custody transfers and provenance through multiple parties.</p>
+
+        <h3>10.6 Decentralized Social Networks</h3>
+        <p>User-owned content graphs with automated microtransactions for likes, shares, and premium features, all metered by the protocol.</p>
+        
+        <h3>10.7 Autonomous AI Agent Economies</h3>
+        <p>Create ecosystems of AI agents that can act on a user's behalf and pay for services instantly. A user grants an agent an 'allowance' of GCU. The agent can then call other services on the network, and Grapthway's Pipeline Engine uses Delegated Transactions to handle micropayments automatically and securely from the user's allowance, without requiring a user signature for every action.</p>
+
+        <h2 id="s11">11. Roadmap</h2>
+        
+        <h3>Phase 1 (Current): Core Infrastructure</h3>
+        <ul>
+            <li>✅ DPoS consensus with deterministic leader selection</li>
+            <li>✅ Parallel transaction processing (4096 shards)</li>
+            <li>✅ Token system with burn/mint mechanics</li>
+            <li>✅ Allowance-based delegated transfers</li>
+            <li>✅ Durable workflows with automatic failover</li>
+            <li>✅ GraphQL federation and schema stitching</li>
+        </ul>
+
+        <h3>Phase 2 (Q1 2026): Enhanced Security</h3>
+        <ul>
+            <li>🔲 Stake slashing for Byzantine behavior</li>
+            <li>🔲 Zero-knowledge proofs for private transactions</li>
+            <li>🔲 Multi-signature wallet support</li>
+        </ul>
+
+        <h3>Phase 3 (Q4 2026): Developer Tooling</h3>
+        <ul>
+            <li>🔲 Browser-based IDE for workflow development</li>
+            <li>🔲 SDKs for JavaScript, Python, Go, and Rust</li>
+            <li>🔲 Testing framework with local network simulation</li>
+            <li>🔲 Analytics dashboard for API usage metrics</li>
+        </ul>
+
+        <h3>Phase 4 (Q3 2027): Ecosystem Expansion</h3>
+        <ul>
+            <li>🔲 Cross-chain bridges to Ethereum and Solana</li>
+            <li>🔲 Decentralized storage integration (IPFS/Arweave)</li>
+            <li>🔲 Mobile wallet with biometric authentication</li>
+            <li>🔲 Governance mechanism for protocol upgrades</li>
+        </ul>
+
+        <div class="page-break"></div>
+    
+        <h2 id="s12">12. Conclusion</h2>
+        <p>The Grapthway Protocol represents a fundamental rethinking of what blockchain infrastructure can be. By separating economic settlement from application execution, it achieves the holy grail of decentralized systems: <strong>Web2 performance with Web3 sovereignty</strong>.</p>
+
+        <p>Traditional blockchains force developers to rebuild their entire application stack to fit within the constraints of a single virtual machine. Grapthway inverts this model—developers keep their existing infrastructure and simply wrap it with a decentralized orchestration layer.</p>
+
+        <p><strong>Key Innovations:</strong></p>
+        <ul>
+            <li>Purpose-built L1 optimized for settlement, not execution</li>
+            <li>Off-chain pipelines and workflows for complex business logic</li>
+            <li>Native token system with configurable economic mechanisms</li>
+            <li>Deterministic consensus immune to network partition attacks</li>
+            <li>Vertical scaling with near-linear performance gains</li>
+        </ul>
+
+        <p>As the internet transitions from platform-owned infrastructure to protocol-owned infrastructure, Grapthway provides the missing bridge. It is a protocol for developers who refuse to compromise—who want the freedom of Web3 without sacrificing the performance of Web2.</p>
+
+        <p><strong>The future of the internet is not centralized platforms. It is not slow blockchains. It is sovereign, scalable, and built on protocols like Grapthway.</strong></p>
+        
+    </div>
+</body>
+</html>

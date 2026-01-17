@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package proto;
+
+import "google/protobuf/timestamp.proto";
+import "pkg/proto/transaction.proto";
+
+option go_package = "grapthway/pkg/proto";
+
+message Block {
+  string proposal_id = 1;
+  string proposer_id = 2;
+  repeated Transaction transactions = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  string hash = 5;
+  uint64 height = 6;
+  string prev_hash = 7;
+  repeated ValidatorInfo next_validators = 8;
+}
+
+message PreBlockProposal {
+  string proposal_id = 1;
+  string proposer_id = 2;
+  repeated Transaction transactions = 3;
+  uint64 height = 4;
+  string prev_hash = 5;
+  map<string, Transaction> raw_transactions = 6;
+}
+
+message PreBlockAck {
+  string proposal_id = 1;
+  string validator_id = 2;
+  bytes validator_sig = 3;
+}
+
+message BlockShred {
+  string block_hash = 1;
+  int32 total_shreds = 2;
+  int32 shred_index = 3;
+  bytes data = 4;
+}
+
+message ValidatorInfo {
+    string peer_id = 1;
+    uint64 total_stake = 2;
+}
+
+message ValidatorSetUpdate {
+    map<string, uint64> validators = 1;
+    string source = 2;
+    google.protobuf.Timestamp timestamp = 3;
+}
