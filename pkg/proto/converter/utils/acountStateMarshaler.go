@@ -6,19 +6,18 @@ import (
 	modeltoproto "grapthway/pkg/proto/converter/model-to-proto"
 	prototomodel "grapthway/pkg/proto/converter/proto-to-model"
 
-	"github.com/gogo/protobuf/proto"
+	"google.golang.org/protobuf/proto"
 )
 
-// In utils package
 func MarshalAccountState(as *types.AccountState) ([]byte, error) {
 	pbState := modeltoproto.ModelToProtoAccountState(as)
 	return proto.Marshal(pbState)
 }
 
 func UnmarshalAccountState(data []byte) (*types.AccountState, error) {
-	var pbState pb.AccountState
-	if err := proto.Unmarshal(data, &pbState); err != nil {
+	pbState := &pb.AccountState{}
+	if err := proto.Unmarshal(data, pbState); err != nil {
 		return nil, err
 	}
-	return prototomodel.ProtoToModelAccountState(&pbState), nil
+	return prototomodel.ProtoToModelAccountState(pbState), nil
 }

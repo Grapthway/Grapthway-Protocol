@@ -21,7 +21,7 @@ require (
 	github.com/multiformats/go-multihash v0.2.3
 	go.uber.org/automaxprocs v1.6.0
 	golang.org/x/time v0.12.0
-	google.golang.org/protobuf v1.36.10
+	google.golang.org/protobuf v1.36.11
 )
 
 require (

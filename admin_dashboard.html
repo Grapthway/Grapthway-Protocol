@@ -1308,14 +1308,12 @@
                 renderTokenManagementArea();
                 }
                 
-                // FIXED: Always re-render selector and list to show updated tokens
                 renderTokenSelector();
                 
                 return true;
             } catch (err) {
                 console.error('Failed to fetch owned tokens:', err);
                 
-                // FIXED: Retry logic for blockchain sync delays
                 if (retries > 0) {
                 console.log(`Retrying in ${delay}ms...`);
                 await new Promise(resolve => setTimeout(resolve, delay));
@@ -1344,58 +1342,160 @@
             
             if (isInitialRender) {
                 container.innerHTML = `
-                    <label class="text-sm font-medium text-gray-700 block mb-1">Your Owned Tokens (Optional)</label>
-                    <div class="relative">
-                        <button id="token-selector-button" class="w-full bg-white border border-gray-300 rounded-md shadow-sm pl-3 pr-10 py-2 text-left cursor-default focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600 sm:text-sm">
-                            ${selectedToken ? `
-                                <span class="flex items-center">
-                                    <span class="ml-3 block truncate font-semibold">${selectedToken.token.name} (${selectedToken.token.ticker})</span>
+                    <label class="text-sm font-medium text-gray-700 block mb-1">Select Token</label>
+                    <div class="space-y-4">
+                        <div class="relative">
+                            <button id="token-selector-button" class="w-full bg-white border border-gray-300 rounded-md shadow-sm pl-3 pr-10 py-2 text-left cursor-default focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600 sm:text-sm">
+                                ${selectedToken ? `
+                                    <span class="flex items-center">
+                                        <span class="block truncate font-semibold">${selectedToken.token.name} (${selectedToken.token.ticker})</span>
+                                    </span>
+                                ` : `
+                                    <span class="block truncate text-gray-500">Select from owned tokens...</span>
+                                `}
+                                <span class="ml-3 absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+                                    <i data-lucide="chevrons-up-down" class="h-5 w-5 text-gray-400"></i>
                                 </span>
-                            ` : `
-                                <span class="ml-3 block truncate text-gray-500">${state.wallet.tokens.list.length > 0 ? 'Select a token to auto-fill forms...' : 'You do not own any tokens.'}</span>
-                            `}
-                            <span class="ml-3 absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
-                                <i data-lucide="chevrons-up-down" class="h-5 w-5 text-gray-400"></i>
-                            </span>
-                        </button>
-                        <div id="token-selector-dropdown" class="${state.wallet.tokens.selectorOpen ? 'block' : 'hidden'} absolute z-10 mt-1 w-full bg-white shadow-lg rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none sm:text-sm" style="max-height: 200px">
-                            <div class="p-2">
-                                <input type="search" id="token-search-input" class="w-full p-2 border rounded-md" placeholder="Search your tokens..." value="${state.wallet.tokens.searchTerm}">
+                            </button>
+                            <div id="token-selector-dropdown" class="${state.wallet.tokens.selectorOpen ? 'block' : 'hidden'} absolute z-10 mt-1 w-full bg-white shadow-lg rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none sm:text-sm" style="max-height: 200px">
+                                <div class="p-2">
+                                    <input type="search" id="token-search-input" class="w-full p-2 border rounded-md" placeholder="Filter owned tokens..." value="${state.wallet.tokens.searchTerm}">
+                                </div>
+                                <div id="token-list-container"></div>
                             </div>
-                            <div id="token-list-container"></div>
+                        </div>
+
+                        <div>
+                            <div class="relative">
+                                <input type="text" id="manual-token-address" placeholder="Or paste Token Address to load..." class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-600 focus:border-blue-600 sm:text-sm font-mono transition-colors">
+                                <div id="manual-token-loader" class="absolute right-3 top-1/2 -translate-y-1/2 hidden">
+                                    <i data-lucide="loader-2" class="animate-spin w-4 h-4 text-blue-600"></i>
+                                </div>
+                            </div>
+                            <p id="manual-token-status" class="text-xs mt-1 min-h-[1.25rem]"></p>
                         </div>
                     </div>
                 `;
                 
                 lucide.createIcons();
                 
-                // Attach event listeners after initial render
+                // --- Event Listeners ---
+
+                // 1. Dropdown Toggle
                 document.getElementById('token-selector-button').addEventListener('click', () => {
                     state.wallet.tokens.selectorOpen = !state.wallet.tokens.selectorOpen;
-                    renderTokenSelector();
+                    renderTokenSelector(); 
                 });
                 
+                // 2. Dropdown Filter
                 document.getElementById('token-search-input').addEventListener('input', (e) => {
                     state.wallet.tokens.searchTerm = e.target.value;
-                    // Re-filter tokens based on new search term
                     const updatedFilteredTokens = state.wallet.tokens.list.filter(t => 
                         t.token.name.toLowerCase().includes(state.wallet.tokens.searchTerm.toLowerCase()) ||
                         t.token.ticker.toLowerCase().includes(state.wallet.tokens.searchTerm.toLowerCase()) ||
                         t.token.address.toLowerCase().includes(state.wallet.tokens.searchTerm.toLowerCase())
                     );
-                    renderTokenList(updatedFilteredTokens); // Update list with filtered results
+                    renderTokenList(updatedFilteredTokens);
                 });
+
+                // 3. Manual Input Logic
+                const manualInput = document.getElementById('manual-token-address');
+                const statusText = document.getElementById('manual-token-status');
+                const loader = document.getElementById('manual-token-loader');
+                let debounceTimer;
+
+                manualInput.addEventListener('input', (e) => {
+                    clearTimeout(debounceTimer);
+                    const address = e.target.value.trim();
+                    
+                    // Reset UI
+                    loader.classList.add('hidden');
+                    manualInput.classList.remove('border-red-500', 'focus:border-red-500', 'focus:ring-red-500');
+                    manualInput.classList.remove('border-green-500', 'focus:border-green-500', 'focus:ring-green-500');
+                    statusText.textContent = '';
+                    statusText.className = 'text-xs mt-1 min-h-[1.25rem]';
+
+                    // Empty check
+                    if (!address) return;
+
+                    // Length Validation
+                    if (address.length < 30) {
+                        statusText.textContent = `Address is too short (${address.length}/30 characters)`;
+                        statusText.classList.add('text-red-600', 'font-medium');
+                        manualInput.classList.add('border-red-500', 'focus:border-red-500', 'focus:ring-red-500');
+                        return;
+                    }
+
+                    // Loading State
+                    loader.classList.remove('hidden');
+                    statusText.textContent = 'Fetching token info...';
+                    statusText.classList.add('text-blue-600');
+
+                    debounceTimer = setTimeout(async () => {
+                        try {
+                            // 1. Fetch Token Info
+                            const tokenInfo = await apiFetch(`/token/info?address=${address}`, { authType: 'public' });
+                            
+                            if (!tokenInfo || tokenInfo.error) {
+                                throw new Error(tokenInfo.message || 'Token not found');
+                            }
+
+                            // 2. Fetch User Balance (even if 0)
+                            const balanceResult = await apiFetch(
+                                `/token/balance?tokenAddress=${address}&owner=${config.identity.address}`, 
+                                { authType: 'public' }
+                            );
+
+                            // 3. Construct "Selected" object manually
+                            const manualTokenObj = {
+                                token: tokenInfo,
+                                balance: (balanceResult && typeof balanceResult.balance !== 'undefined') ? balanceResult.balance : 0,
+                                balanceRaw: (balanceResult && typeof balanceResult.balanceRaw !== 'undefined') ? balanceResult.balanceRaw : 0
+                            };
+
+                            // 4. Update State
+                            state.wallet.tokens.selected = manualTokenObj;
+                            state.wallet.tokens.selectedTokenInfo = tokenInfo;
+                            state.wallet.tokens.selectorOpen = false; // Close dropdown if open
+
+                            // 4. Update UI Success
+                            renderTokenSelector(); // Updates top button
+                            renderTokenManagementArea(); // Updates main panel
+                            
+                            // 5. Post-render visual feedback (re-grab elements as renderTokenSelector replaced DOM)
+                            const newInput = document.getElementById('manual-token-address');
+                            const newStatus = document.getElementById('manual-token-status');
+                            if(newInput && newStatus) {
+                                newInput.value = address; // Keep the address visible
+                                newInput.classList.add('border-green-500', 'focus:border-green-500', 'focus:ring-green-500');
+                                newStatus.innerHTML = `<span class="flex items-center text-green-600 font-medium"><i data-lucide="check-circle-2" class="w-3 h-3 mr-1"></i>Loaded: ${tokenInfo.name}</span>`;
+                                lucide.createIcons();
+                            }
+
+                            loader.classList.add('hidden');
+
+                        } catch (err) {
+                            // Error State
+                            loader.classList.add('hidden');
+                            statusText.textContent = err.message;
+                            statusText.classList.remove('text-blue-600');
+                            statusText.classList.add('text-red-600', 'font-medium');
+                            manualInput.classList.add('border-red-500', 'focus:border-red-500', 'focus:ring-red-500');
+                        }
+                    }, 800); // 800ms debounce
+                });
+
             } else {
-                // Update only the button text if selection changed
+                // Non-initial render: Update dynamic button text only
                 const button = document.getElementById('token-selector-button');
                 if (button) {
                     button.innerHTML = `
                         ${selectedToken ? `
                             <span class="flex items-center">
-                                <span class="ml-3 block truncate font-semibold">${selectedToken.token.name} (${selectedToken.token.ticker})</span>
+                                <span class="block truncate font-semibold">${selectedToken.token.name} (${selectedToken.token.ticker})</span>
                             </span>
                         ` : `
-                            <span class="ml-3 block truncate text-gray-500">${state.wallet.tokens.list.length > 0 ? 'Select a token to auto-fill forms...' : 'You do not own any tokens.'}</span>
+                            <span class="block truncate text-gray-500">Select from owned tokens...</span>
                         `}
                         <span class="ml-3 absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
                             <i data-lucide="chevrons-up-down" class="h-5 w-5 text-gray-400"></i>
@@ -1403,22 +1503,14 @@
                     `;
                 }
                 
-                // Update dropdown visibility
                 const dropdown = document.getElementById('token-selector-dropdown');
                 if (dropdown) {
                     dropdown.className = `${state.wallet.tokens.selectorOpen ? 'block' : 'hidden'} absolute z-10 mt-1 w-full bg-white shadow-lg rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none sm:text-sm`;
                 }
                 
-                // Update search input value if it exists
-                const searchInput = document.getElementById('token-search-input');
-                if (searchInput && searchInput.value !== state.wallet.tokens.searchTerm) {
-                    searchInput.value = state.wallet.tokens.searchTerm;
-                }
-                
                 lucide.createIcons();
             }
             
-            // Always update the token list with filtered results
             renderTokenList(filteredTokens);
         };
 
@@ -1454,14 +1546,27 @@
         const handleTokenSelect = async (tokenAddress) => {
             const selected = state.wallet.tokens.list.find(t => t.token.address === tokenAddress);
             if(selected) {
-                state.wallet.tokens.selected = selected;
-                state.wallet.tokens.selectorOpen = false;
-                renderTokenSelector();
-                
-                // Fetch detailed token info
                 const tokenInfo = await apiFetch(`/token/info?address=${tokenAddress}`, { authType: 'public' });
-                state.wallet.tokens.selectedTokenInfo = tokenInfo;
                 
+                if (!tokenInfo || tokenInfo.error) {
+                    throw new Error(tokenInfo.message || 'Token not found');
+                }
+
+                const balanceResult = await apiFetch(
+                    `/token/balance?tokenAddress=${tokenAddress}&owner=${config.identity.address}`, 
+                    { authType: 'public' }
+                );
+
+                const manualTokenObj = {
+                    token: tokenInfo,
+                    balance: (balanceResult && typeof balanceResult.balance !== 'undefined') ? balanceResult.balance : 0,
+                    balanceRaw: (balanceResult && typeof balanceResult.balanceRaw !== 'undefined') ? balanceResult.balanceRaw : 0
+                };
+                state.wallet.tokens.selected = manualTokenObj;
+                state.wallet.tokens.selectorOpen = false;
+                state.wallet.tokens.selectedTokenInfo = tokenInfo;
+
+                renderTokenSelector();
                 renderTokenManagementArea();
             }
         };
@@ -1533,7 +1638,7 @@
                                 <div class="p-3 border-b mb-2">
                                     <h3 class="font-bold text-lg truncate">${selectedToken.token.name}</h3>
                                     <p class="text-sm text-gray-500">${selectedToken.token.ticker}</p>
-                                    <p class="text-lg font-semibold mt-1">${(selectedToken.balance / Math.pow(10, decimals)).toFixed(decimals)}</p>
+                                    <p class="text-lg font-semibold mt-1">${(selectedToken.balanceRaw / Math.pow(10, decimals)).toFixed(decimals)}</p>
                                     ${isLocked ? `<span class="inline-block mt-2 px-2 py-1 bg-gray-200 text-gray-700 text-xs rounded-full"><i data-lucide="lock" class="w-3 h-3 inline mr-1"></i>Config Locked</span>` : ''}
                                 </div>
                             ` : `
@@ -1799,14 +1904,26 @@
                 }
                 
                 debounceTimer = setTimeout(async () => {
-                    if (!state.wallet.tokens.selected || !config.identity) return;
-                    
-                    const tokenAddress = state.wallet.tokens.selected.token.address;
-                    const tokenInfo = state.wallet.tokens.selectedTokenInfo;
+
+                    // const tokenAddressInput = document.querySelector('#token-allowance-set-form input[name="tokenAddress"]');
+                    const form = document.getElementById('token-allowance-set-form');
+                    const tokenAddressInput = form.querySelector('input[name="tokenAddress"]').value;
+                    if (!tokenAddressInput || tokenAddressInput.length < 10) {
+                        const allowanceContainer = document.getElementById('token-allowance-container');
+                        if (allowanceContainer) {
+                        allowanceContainer.innerHTML = '<span class="text-sm text-gray-500">Enter Token Address</span>';
+                        }
+                        return;
+                    }
+
+                    const tokenInfo = await apiFetch(`/token/info?address=${tokenAddressInput}`, {authType: 'public'});
+                    if (tokenInfo && !tokenInfo.error) {
+                        state.wallet.tokens.selectedTokenInfo = tokenInfo;
+                    }
                     
                     try {
                         const result = await apiFetch(
-                            `/token/allowance?tokenAddress=${tokenAddress}&owner=${config.identity.address}&spender=${spender}`, 
+                            `/token/allowance?tokenAddress=${tokenAddressInput}&owner=${config.identity.address}&spender=${spender}`, 
                             {authType: 'public'}
                         );
                         
@@ -1862,6 +1979,11 @@
                             `/token/balance?tokenAddress=${tokenAddress}&owner=${recipient}`,
                             { authType: 'public' }
                         );
+
+                        const tokenInfo = await apiFetch(`/token/info?address=${tokenAddressInput}`, {authType: 'public'});
+                        if (tokenInfo && !tokenInfo.error) {
+                            state.wallet.tokens.selectedTokenInfo = tokenInfo;
+                        }
                         
                         const balanceContainer = document.getElementById('token-balance-container');
                         if (balanceContainer && result && typeof result.balance !== 'undefined') {
@@ -1892,7 +2014,6 @@
                     state.wallet.tokens.selectedTokenInfo = tokenInfo;
                 }
                 
-                // FIXED: Refetch balance
                 const balanceResult = await apiFetch(
                     `/token/balance?tokenAddress=${tokenAddress}&owner=${config.identity.address}`, 
                     {authType: 'public'}
@@ -2002,7 +2123,6 @@
                 submitButton.innerHTML = originalText;
                 lucide.createIcons();
 
-                // FIXED: Better success detection for token creation
                 const isSuccess = result && 
                                 !result.error && 
                                 (result.id || result.transactionId || result.type === 'TOKEN_CREATE' || 
@@ -2026,7 +2146,6 @@
                     hideCreateTokenModal();
                     }
 
-                    // FIXED: More aggressive refresh strategy for token creation
                     console.log('Starting post-transaction refresh...');
                     
                     // CRITICAL: For token creation, use longer delay and force multiple refreshes

@@ -74,8 +74,19 @@ func CreateTokenHandler(w http.ResponseWriter, r *http.Request, ledgerClient *Cl
 		return
 	}
 
-	// Convert float supply to uint64 (micro-units)
-	supplyMicro := uint64(req.TokenMetadata.InitialSupply * math.Pow(10, float64(req.TokenMetadata.Decimals)))
+	multiplier := math.Pow10(int(req.TokenMetadata.Decimals))
+
+	if req.TokenMetadata.InitialSupply < 0 {
+		http.Error(w, "Initial supply cannot be negative", http.StatusBadRequest)
+		return
+	}
+
+	if req.TokenMetadata.InitialSupply > float64(math.MaxUint64)/multiplier {
+		http.Error(w, "Initial supply is too large", http.StatusBadRequest)
+		return
+	}
+
+	supplyMicro := uint64(req.TokenMetadata.InitialSupply * multiplier)
 
 	// Create a unique hash for the transaction ID
 	ts := time.Now()
@@ -824,7 +835,7 @@ func GetTokenHandler(w http.ResponseWriter, r *http.Request, ledgerClient *Clien
 	jsoniter.NewEncoder(w).Encode(token)
 }
 
-// FIXED: GetTokenBalanceHandler - Correct decimal conversion
+// GetTokenBalanceHandler - Correct decimal conversion
 func GetTokenBalanceHandler(w http.ResponseWriter, r *http.Request, ledgerClient *Client) {
 	tokenAddress := r.URL.Query().Get("tokenAddress")
 	owner := r.URL.Query().Get("owner")
@@ -846,7 +857,7 @@ func GetTokenBalanceHandler(w http.ResponseWriter, r *http.Request, ledgerClient
 		return
 	}
 
-	// FIXED: Use proper decimal conversion
+	// Use proper decimal conversion
 	var balance float64
 	if token.Decimals > 0 {
 		balance = float64(balanceMicro) / math.Pow(10, float64(token.Decimals))

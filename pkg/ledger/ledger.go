@@ -20,6 +20,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 
 	"grapthway/pkg/crypto"
+	"grapthway/pkg/ledger/state"
 	"grapthway/pkg/ledger/types"
 	"grapthway/pkg/model"
 	"grapthway/pkg/monitoring"
@@ -104,65 +105,6 @@ type historyEntry struct {
 	TxID         string
 	IsTokenTx    bool
 	TokenHistory *types.TokenHistory
-}
-
-// Token cache for performance optimization
-type tokenCache struct {
-	sync.RWMutex
-	tokens     map[string]*types.Token
-	ttl        time.Duration
-	timestamps map[string]time.Time
-}
-
-func newTokenCache(ttl time.Duration) *tokenCache {
-	tc := &tokenCache{
-		tokens:     make(map[string]*types.Token),
-		timestamps: make(map[string]time.Time),
-		ttl:        ttl,
-	}
-	go tc.cleanup()
-	return tc
-}
-
-func (tc *tokenCache) get(address string) (*types.Token, bool) {
-	tc.RLock()
-	defer tc.RUnlock()
-
-	token, exists := tc.tokens[address]
-	if !exists {
-		return nil, false
-	}
-
-	// Check if expired
-	if time.Since(tc.timestamps[address]) > tc.ttl {
-		return nil, false
-	}
-
-	return token, true
-}
-
-func (tc *tokenCache) set(address string, token *types.Token) {
-	tc.Lock()
-	defer tc.Unlock()
-	tc.tokens[address] = token
-	tc.timestamps[address] = time.Now()
-}
-
-func (tc *tokenCache) cleanup() {
-	ticker := time.NewTicker(5 * time.Minute)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		tc.Lock()
-		now := time.Now()
-		for addr, ts := range tc.timestamps {
-			if now.Sub(ts) > tc.ttl {
-				delete(tc.tokens, addr)
-				delete(tc.timestamps, addr)
-			}
-		}
-		tc.Unlock()
-	}
 }
 
 // mapTokenOpToTxType converts a TokenOperation to a TransactionType
@@ -291,9 +233,11 @@ type Client struct {
 	validatedProposalCache      sync.Map
 	networkHardwareMonitor      *monitoring.NetworkHardwareMonitor
 	hardwareMonitor             *monitoring.Monitor
-	tokenCache                  *tokenCache
+	tokenCache                  *state.TokenCache
 	txPropagationState          sync.Map // map[txID]map[peerID]time.Time
 	txPropagationMutex          sync.RWMutex
+	currentTokenBatch           *TokenBatchOperations
+	tokenBatchMutex             sync.RWMutex
 }
 
 func fnv32(key string) uint32 {
@@ -328,7 +272,7 @@ func NewClient(ctx context.Context, db *badger.DB, netHwMonitor *monitoring.Netw
 		accountLockShards:      make([]accountLockShard, numShards),
 		mempoolShards:          make([]boundedMempoolShard, numShards),
 		accountCacheShards:     make([]accountCacheShard, numShards),
-		tokenCache:             newTokenCache(10 * time.Minute),
+		tokenCache:             state.NewTokenCache(10 * time.Minute),
 	}
 
 	for i := 0; i < numShards; i++ {
@@ -2088,6 +2032,10 @@ func (c *Client) ApplyFullSyncState(data []byte) error {
 		// ============ STEP 8: Apply Last Block ============
 		if fullSync.LastBlock != nil {
 			lastBlock := prototomodel.ProtoToModelBlock(fullSync.LastBlock)
+			if len(lastBlock.NextValidators) == 0 && len(c.validatorSet) > 0 {
+				lastBlock.NextValidators = make([]types.ValidatorInfo, len(c.validatorSet))
+				copy(lastBlock.NextValidators, c.validatorSet)
+			}
 			c.metaLock.Lock()
 			c.lastBlock = lastBlock
 			c.lastBlockHash = fullSync.LastBlockHash
@@ -2548,7 +2496,7 @@ func (c *Client) GetTransactionHistory(address string, page, limit int, startTim
 
 		for tokenAddr := range tokenAddresses {
 			// Check cache first
-			if cached, found := c.tokenCache.get(tokenAddr); found {
+			if cached, found := c.tokenCache.Get(tokenAddr); found {
 				mu.Lock()
 				tokenCache[tokenAddr] = cached
 				mu.Unlock()
@@ -2563,7 +2511,7 @@ func (c *Client) GetTransactionHistory(address string, page, limit int, startTim
 					mu.Lock()
 					tokenCache[addr] = token
 					mu.Unlock()
-					c.tokenCache.set(addr, token)
+					c.tokenCache.Set(addr, token)
 				}
 			}(tokenAddr)
 		}
@@ -2766,7 +2714,7 @@ func (c *Client) getPendingTransactionsForAddress(address string, alreadySeenIDs
 
 			// Enrich with token info if applicable
 			if tx.TokenAddress != "" {
-				if token, found := c.tokenCache.get(tx.TokenAddress); found {
+				if token, found := c.tokenCache.Get(tx.TokenAddress); found {
 					detail.TokenTicker = token.Ticker
 					detail.TokenName = token.Name
 					detail.TokenDecimals = token.Decimals
@@ -2784,7 +2732,7 @@ func (c *Client) getPendingTransactionsForAddress(address string, alreadySeenIDs
 					} else {
 						detail.AmountFormatted = float64(tx.Amount)
 					}
-					c.tokenCache.set(tx.TokenAddress, token)
+					c.tokenCache.Set(tx.TokenAddress, token)
 				}
 				detail.TokenOperation = mapTxTypeToTokenOp(tx.Type)
 			}
@@ -2955,11 +2903,18 @@ func deepCopyAccountState(original *types.AccountState) *types.AccountState {
 	return copy
 }
 
-// File: pkg/ledger/ledger.go
+// Modified processBlock function with token batch support
+// Replace your existing processBlock function with this version
 
 func (c *Client) processBlock(block types.Block) error {
 	start := time.Now()
 	log.Printf("[PERF-LOG] START: Processing block %d (Hash: %s)", block.Height, block.Hash[:10])
+
+	// ============ INITIALIZE TOKEN BATCH ============
+	c.tokenBatchMutex.Lock()
+	c.currentTokenBatch = NewTokenBatchOperations()
+	c.tokenBatchMutex.Unlock()
+	// ============ END TOKEN BATCH INIT ============
 
 	involvedAccounts, err := c.lockAccountsForBlock(block)
 	if err != nil {
@@ -3217,6 +3172,18 @@ foundInCache:
 		}
 	}
 	// --- END NEW SECTION ---
+
+	// ============ APPLY TOKEN BATCH ============
+	// Apply all token operations to the write batch
+	c.tokenBatchMutex.RLock()
+	currentBatch := c.currentTokenBatch
+	c.tokenBatchMutex.RUnlock()
+
+	if err := c.ApplyTokenBatchToWriteBatch(currentBatch, wb); err != nil {
+		return fmt.Errorf("failed to apply token batch: %w", err)
+	}
+	log.Printf("[PERF-LOG] STEP 5.5: Applied token batch operations. Duration: %v", time.Since(start))
+	// ============ END TOKEN BATCH APPLICATION ============
 
 	// Write the final state of all modified accounts
 	for _, acc := range accountsToWrite {
@@ -3642,6 +3609,12 @@ func logAccountState(prefix string, txID string, acc *types.AccountState) {
 	log.Printf("%s [%s] Addr: %s, Balance: %d, Nonce: %d, Stake: %d", prefix, txID, acc.Address, acc.Balance, acc.Nonce, stakeTotal)
 }
 
+// Modified applyTransactionStateLogic function
+// Replace the token transaction cases (around lines 3794-3860) with this version
+
+// Modified applyTransactionStateLogic function
+// Replace the token transaction cases (around lines 3794-3860) with this version
+
 func (c *Client) applyTransactionStateLogic(tx types.Transaction, accounts map[string]*types.AccountState, effectiveType types.TransactionType) error {
 	c.processedTxDuringBlockMutex.Lock()
 	if _, exists := c.processedTxDuringBlock[tx.ID]; exists {
@@ -3845,12 +3818,20 @@ func (c *Client) applyTransactionStateLogic(tx types.Transaction, accounts map[s
 		toAcc.Balance += tx.Amount
 		log.Printf("LEDGER: Executed rollback credit of %d to %s", tx.Amount, tx.To)
 
+	// ============ TOKEN OPERATIONS (USING BATCH) ============
 	case model.TokenCreateTransaction:
 		if tx.TokenMetadata == nil {
 			return fmt.Errorf("token metadata missing for token creation")
 		}
 
-		_, err := c.CreateToken(
+		// Get current token batch
+		c.tokenBatchMutex.RLock()
+		currentBatch := c.currentTokenBatch
+		c.tokenBatchMutex.RUnlock()
+
+		// Use batch operation instead of direct DB write
+		_, err := c.CreateTokenInBatch(
+			currentBatch,
 			tx.ID,
 			tx.From,
 			tx.TokenMetadata.Name,
@@ -3868,49 +3849,74 @@ func (c *Client) applyTransactionStateLogic(tx types.Transaction, accounts map[s
 		if tx.TokenAddress == "" {
 			return fmt.Errorf("token address missing for token transfer")
 		}
-		return c.TransferToken(tx.TokenAddress, tx.From, tx.To, tx.Amount, tx.ID)
+		c.tokenBatchMutex.RLock()
+		currentBatch := c.currentTokenBatch
+		c.tokenBatchMutex.RUnlock()
+		return c.TransferTokenInBatch(currentBatch, tx.TokenAddress, tx.From, tx.To, tx.Amount, tx.ID)
 
 	case model.TokenMintTransaction:
 		if tx.TokenAddress == "" {
 			return fmt.Errorf("token address missing for token mint")
 		}
-		return c.ManualMintToken(tx.TokenAddress, tx.From, tx.To, tx.Amount, tx.ID)
+		c.tokenBatchMutex.RLock()
+		currentBatch := c.currentTokenBatch
+		c.tokenBatchMutex.RUnlock()
+		return c.ManualMintTokenInBatch(currentBatch, tx.TokenAddress, tx.From, tx.To, tx.Amount, tx.ID)
 
 	case model.TokenBurnTransaction:
 		if tx.TokenAddress == "" {
 			return fmt.Errorf("token address missing for token burn")
 		}
-		return c.ManualBurnToken(tx.TokenAddress, tx.From, tx.Amount, tx.ID)
+		c.tokenBatchMutex.RLock()
+		currentBatch := c.currentTokenBatch
+		c.tokenBatchMutex.RUnlock()
+		return c.ManualBurnTokenInBatch(currentBatch, tx.TokenAddress, tx.From, tx.Amount, tx.ID)
 
 	case model.TokenApproveTransaction:
 		if tx.TokenAddress == "" {
 			return fmt.Errorf("token address missing for token approve")
 		}
-		return c.SetTokenAllowance(tx.TokenAddress, tx.From, tx.To, tx.AllowanceLimit, tx.ID)
+		c.tokenBatchMutex.RLock()
+		currentBatch := c.currentTokenBatch
+		c.tokenBatchMutex.RUnlock()
+		return c.SetTokenAllowanceInBatch(currentBatch, tx.TokenAddress, tx.From, tx.To, tx.AllowanceLimit, tx.ID)
 
 	case model.TokenRevokeTransaction:
 		if tx.TokenAddress == "" {
 			return fmt.Errorf("token address missing for token revoke")
 		}
-		return c.DeleteTokenAllowance(tx.TokenAddress, tx.From, tx.To, tx.ID)
+		c.tokenBatchMutex.RLock()
+		currentBatch := c.currentTokenBatch
+		c.tokenBatchMutex.RUnlock()
+		return c.DeleteTokenAllowanceInBatch(currentBatch, tx.TokenAddress, tx.From, tx.To, tx.ID)
 
 	case model.TokenLockTransaction:
 		if tx.TokenAddress == "" {
 			return fmt.Errorf("token address missing for token lock")
 		}
-		return c.LockTokenConfig(tx.TokenAddress, tx.From, tx.ID)
+		c.tokenBatchMutex.RLock()
+		currentBatch := c.currentTokenBatch
+		c.tokenBatchMutex.RUnlock()
+		return c.LockTokenConfigInBatch(currentBatch, tx.TokenAddress, tx.From, tx.ID)
 
 	case model.TokenConfigBurnTransaction:
 		if tx.TokenAddress == "" {
 			return fmt.Errorf("token address missing for token config burn")
 		}
-		return c.SetBurnableConfig(tx.TokenAddress, tx.From, types.BurnConfig(tx.TokenMetadata.BurnConfig), tx.ID)
+		c.tokenBatchMutex.RLock()
+		currentBatch := c.currentTokenBatch
+		c.tokenBatchMutex.RUnlock()
+		return c.SetBurnableConfigInBatch(currentBatch, tx.TokenAddress, tx.From, types.BurnConfig(tx.TokenMetadata.BurnConfig), tx.ID)
 
 	case model.TokenConfigMintTransaction:
 		if tx.TokenAddress == "" {
 			return fmt.Errorf("token address missing for token config mint")
 		}
-		return c.SetMintableConfig(tx.TokenAddress, tx.From, types.MintConfig(tx.TokenMetadata.MintConfig), tx.ID)
+		c.tokenBatchMutex.RLock()
+		currentBatch := c.currentTokenBatch
+		c.tokenBatchMutex.RUnlock()
+		return c.SetMintableConfigInBatch(currentBatch, tx.TokenAddress, tx.From, types.MintConfig(tx.TokenMetadata.MintConfig), tx.ID)
+	// ============ END TOKEN OPERATIONS ============
 
 	default:
 		return fmt.Errorf("unknown transaction type: %s", tx.Type)

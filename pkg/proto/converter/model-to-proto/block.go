@@ -36,7 +36,6 @@ func ModelToProtoTransaction(m *types.Transaction) *pb.Transaction {
 		}
 	}
 
-	// ============ FIXED: Include ALL config fields ============
 	if m.TokenMetadata != nil {
 		p.TokenMetadata = &pb.TokenMetadata{
 			Name:          m.TokenMetadata.Name,
@@ -50,18 +49,17 @@ func ModelToProtoTransaction(m *types.Transaction) *pb.Transaction {
 		// Create BurnConfig with ALL fields
 		p.TokenMetadata.BurnConfig = &pb.BurnConfig{
 			Enabled:       m.TokenMetadata.BurnConfig.Enabled,
-			BurnRatePerTx: m.TokenMetadata.BurnConfig.BurnRatePerTx, // ✅ FIXED: Now included
+			BurnRatePerTx: m.TokenMetadata.BurnConfig.BurnRatePerTx,
 			ManualBurn:    m.TokenMetadata.BurnConfig.ManualBurn,
 		}
 
 		// Create MintConfig with ALL fields
 		p.TokenMetadata.MintConfig = &pb.MintConfig{
 			Enabled:       m.TokenMetadata.MintConfig.Enabled,
-			MintRatePerTx: m.TokenMetadata.MintConfig.MintRatePerTx, // ✅ FIXED: Now included
+			MintRatePerTx: m.TokenMetadata.MintConfig.MintRatePerTx,
 			ManualMint:    m.TokenMetadata.MintConfig.ManualMint,
 		}
 	}
-	// ==========================================================
 
 	return p
 }

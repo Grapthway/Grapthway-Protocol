@@ -42,8 +42,6 @@ func protoToModelTokenMetadata(p *pb.TokenMetadata) *types.TokenMetadata {
 	}
 }
 
-// --- END: Helper functions ---
-
 // protoToModelTransaction now deserializes token-related fields.
 func ProtoToModelTransaction(p *pb.Transaction) *types.Transaction {
 	if p == nil {
@@ -82,13 +80,23 @@ func ProtoToModelBlock(p *pb.Block) *types.Block {
 	for i, tx := range p.Transactions {
 		txs[i] = *ProtoToModelTransaction(tx)
 	}
+
+	nextValidators := make([]types.ValidatorInfo, len(p.NextValidators))
+	for i, v := range p.NextValidators {
+		val := protoToModelValidatorInfo(v)
+		if val != nil {
+			nextValidators[i] = *val
+		}
+	}
+
 	return &types.Block{
-		ProposerID:   p.ProposerId,
-		Transactions: txs,
-		Timestamp:    p.Timestamp.AsTime(),
-		Hash:         p.Hash,
-		Height:       p.Height,
-		PrevHash:     p.PrevHash,
+		ProposerID:     p.ProposerId,
+		Transactions:   txs,
+		Timestamp:      p.Timestamp.AsTime(),
+		Hash:           p.Hash,
+		Height:         p.Height,
+		PrevHash:       p.PrevHash,
+		NextValidators: nextValidators,
 	}
 }
 

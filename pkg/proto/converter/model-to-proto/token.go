@@ -7,7 +7,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// Helper functions for token conversions
 func modelToProtoBurnConfig(m *types.BurnConfig) *pb.BurnConfig {
 	if m == nil {
 		return nil
