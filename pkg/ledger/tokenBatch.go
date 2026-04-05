@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"grapthway/pkg/ledger/types"
 	"log"
+	"runtime"
+	"sync"
 	"time"
 
 	jsoniter "github.com/json-iterator/go"
@@ -523,181 +525,304 @@ func (c *Client) getTokenForBatch(batch *TokenBatchOperations, tokenAddress stri
 
 // ApplyTokenBatchToWriteBatch writes all token operations to the Badger write batch
 func (c *Client) ApplyTokenBatchToWriteBatch(batch *TokenBatchOperations, wb *badger.WriteBatch) error {
-	// Write new tokens
-	for tokenAddress, token := range batch.TokenCreates {
-		tokenBytes, err := jsoniter.Marshal(token)
-		if err != nil {
-			return fmt.Errorf("failed to marshal token %s: %w", tokenAddress, err)
+	numWorkers := runtime.GOMAXPROCS(0) * 16
+	if numWorkers == 0 {
+		numWorkers = 8
+	}
+
+	errChan := make(chan error, 6)
+	var wg sync.WaitGroup
+
+	// Token creates — independent
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for tokenAddress, token := range batch.TokenCreates {
+			tokenBytes, err := jsoniter.Marshal(token)
+			if err != nil {
+				errChan <- fmt.Errorf("failed to marshal token %s: %w", tokenAddress, err)
+				return
+			}
+			if err := wb.Set([]byte(types.TokenPrefix+tokenAddress), tokenBytes); err != nil {
+				errChan <- err
+				return
+			}
+			if token.Metadata != "" {
+				if err := wb.Set([]byte(types.TokenMetadataPrefix+tokenAddress), []byte(token.Metadata)); err != nil {
+					errChan <- err
+					return
+				}
+			}
 		}
-		if err := wb.Set([]byte(types.TokenPrefix+tokenAddress), tokenBytes); err != nil {
+	}()
+
+	// Token updates — independent
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for tokenAddress, token := range batch.TokenUpdates {
+			tokenBytes, err := jsoniter.Marshal(token)
+			if err != nil {
+				errChan <- fmt.Errorf("failed to marshal updated token %s: %w", tokenAddress, err)
+				return
+			}
+			if err := wb.Set([]byte(types.TokenPrefix+tokenAddress), tokenBytes); err != nil {
+				errChan <- err
+				return
+			}
+		}
+	}()
+
+	// Ownership — independent
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for tokenAddress, owners := range batch.OwnershipAdds {
+			for owner := range owners {
+				key := []byte(fmt.Sprintf("%s%s-%s", types.TokenOwnerPrefix, owner, tokenAddress))
+				if err := wb.Set(key, []byte{1}); err != nil {
+					errChan <- err
+					return
+				}
+			}
+		}
+	}()
+
+	// Absolute balances — independent (no DB reads needed)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for tokenAddress, ownerBalances := range batch.AbsoluteBalances {
+			for owner, absoluteBalance := range ownerBalances {
+				key := []byte(fmt.Sprintf("%s%s-%s", types.TokenBalancePrefix, tokenAddress, owner))
+				b := make([]byte, 8)
+				binary.BigEndian.PutUint64(b, absoluteBalance)
+				if err := wb.Set(key, b); err != nil {
+					errChan <- err
+					return
+				}
+			}
+		}
+	}()
+
+	// Allowances + deletes — independent, parallel with own worker pool
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for tokenAddress, ownerAllowances := range batch.Allowances {
+			for owner, spenderAllowances := range ownerAllowances {
+				for spender, amount := range spenderAllowances {
+					key := []byte(fmt.Sprintf("%s%s-%s-%s", types.TokenAllowancePrefix, tokenAddress, owner, spender))
+					b := make([]byte, 8)
+					binary.BigEndian.PutUint64(b, amount)
+					if err := wb.Set(key, b); err != nil {
+						errChan <- err
+						return
+					}
+				}
+			}
+		}
+		for tokenAddress, ownerDeletes := range batch.AllowanceDeletes {
+			for owner, spenderDeletes := range ownerDeletes {
+				for spender := range spenderDeletes {
+					key := []byte(fmt.Sprintf("%s%s-%s-%s", types.TokenAllowancePrefix, tokenAddress, owner, spender))
+					if err := wb.Delete(key); err != nil {
+						log.Printf("WARN: Failed to delete allowance key %s: %v", key, err)
+					}
+				}
+			}
+		}
+	}()
+
+	// History entries — use worker pool since there can be many
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		historyChan := make(chan types.TokenHistory, len(batch.HistoryEntries))
+		for _, h := range batch.HistoryEntries {
+			historyChan <- h
+		}
+		close(historyChan)
+
+		var hwg sync.WaitGroup
+		histWorkers := numWorkers
+		if histWorkers > len(batch.HistoryEntries) {
+			histWorkers = len(batch.HistoryEntries)
+		}
+		histErrChan := make(chan error, len(batch.HistoryEntries))
+		for i := 0; i < histWorkers; i++ {
+			hwg.Add(1)
+			go func() {
+				defer hwg.Done()
+				for history := range historyChan {
+					historyBytes, err := jsoniter.Marshal(history)
+					if err != nil {
+						histErrChan <- err
+						return
+					}
+					ts := history.Timestamp.Format(time.RFC3339Nano)
+					if history.From != "" && history.From != "0x0" {
+						key := []byte(fmt.Sprintf("tidx-token-from-%s-%s-%s", history.From, ts, history.TxHash))
+						if err := wb.Set(key, historyBytes); err != nil {
+							histErrChan <- err
+							return
+						}
+					}
+					if history.To != "" && history.To != "0x0" {
+						key := []byte(fmt.Sprintf("tidx-token-to-%s-%s-%s", history.To, ts, history.TxHash))
+						if err := wb.Set(key, historyBytes); err != nil {
+							histErrChan <- err
+							return
+						}
+					}
+				}
+			}()
+		}
+		hwg.Wait()
+		close(histErrChan)
+		for err := range histErrChan {
+			if err != nil {
+				errChan <- err
+				return
+			}
+		}
+	}()
+
+	// Wait for all six independent sections
+	wg.Wait()
+	close(errChan)
+
+	// Drain errors from all six parallel sections before proceeding to delta phase
+	for err := range errChan {
+		if err != nil {
 			return err
 		}
-
-		// Write metadata if present
-		if token.Metadata != "" {
-			metaKey := []byte(types.TokenMetadataPrefix + tokenAddress)
-			if err := wb.Set(metaKey, []byte(token.Metadata)); err != nil {
-				return err
-			}
-		}
 	}
 
-	// Write token updates
-	for tokenAddress, token := range batch.TokenUpdates {
-		tokenBytes, err := jsoniter.Marshal(token)
-		if err != nil {
-			return fmt.Errorf("failed to marshal updated token %s: %w", tokenAddress, err)
-		}
-		if err := wb.Set([]byte(types.TokenPrefix+tokenAddress), tokenBytes); err != nil {
-			return err
-		}
+	// Balance deltas must run AFTER absolute balances are written (dependency ordering).
+	// Different token+owner pairs are independent — parallelized with a worker pool.
+	// Same token+owner pairs within a batch are impossible by construction (map keys are unique).
+	type balanceDeltaJob struct {
+		tokenAddress string
+		owner        string
+		delta        int64
 	}
 
-	// Write ownership records
-	for tokenAddress, owners := range batch.OwnershipAdds {
-		for owner := range owners {
-			ownerKey := []byte(fmt.Sprintf("%s%s-%s", types.TokenOwnerPrefix, owner, tokenAddress))
-			if err := wb.Set(ownerKey, []byte{1}); err != nil {
-				return err
-			}
-		}
-	}
-
-	// First, write absolute balances (from token creation)
-	for tokenAddress, ownerBalances := range batch.AbsoluteBalances {
-		for owner, absoluteBalance := range ownerBalances {
-			balanceKey := []byte(fmt.Sprintf("%s%s-%s", types.TokenBalancePrefix, tokenAddress, owner))
-			balanceBytes := make([]byte, 8)
-			binary.BigEndian.PutUint64(balanceBytes, absoluteBalance)
-			if err := wb.Set(balanceKey, balanceBytes); err != nil {
-				return err
-			}
-		}
-	}
-
-	// Then apply balance changes (deltas from transfers, mints, burns)
+	deltaJobs := make([]balanceDeltaJob, 0)
 	for tokenAddress, ownerBalances := range batch.BalanceChanges {
 		for owner, delta := range ownerBalances {
-			balanceKey := []byte(fmt.Sprintf("%s%s-%s", types.TokenBalancePrefix, tokenAddress, owner))
+			deltaJobs = append(deltaJobs, balanceDeltaJob{
+				tokenAddress: tokenAddress,
+				owner:        owner,
+				delta:        delta,
+			})
+		}
+	}
 
-			var currentBalance uint64
+	if len(deltaJobs) > 0 {
+		numDeltaWorkers := runtime.GOMAXPROCS(0) * 16
+		if numDeltaWorkers == 0 {
+			numDeltaWorkers = 8
+		}
+		if numDeltaWorkers > len(deltaJobs) {
+			numDeltaWorkers = len(deltaJobs)
+		}
 
-			// Check if we already set an absolute balance for this owner in this batch
-			if batch.AbsoluteBalances[tokenAddress] != nil {
-				if absBalance, exists := batch.AbsoluteBalances[tokenAddress][owner]; exists {
-					// Use the absolute balance we just set
-					currentBalance = absBalance
+		jobChan := make(chan balanceDeltaJob, len(deltaJobs))
+		for _, job := range deltaJobs {
+			jobChan <- job
+		}
+		close(jobChan)
 
-					// Apply delta
-					var newBalance uint64
-					if delta < 0 {
-						if currentBalance < uint64(-delta) {
-							return fmt.Errorf("insufficient token balance for %s (has %d, needs %d)", owner, currentBalance, uint64(-delta))
+		deltaErrChan := make(chan error, len(deltaJobs))
+		var deltaWg sync.WaitGroup
+		for i := 0; i < numDeltaWorkers; i++ {
+			deltaWg.Add(1)
+			go func() {
+				defer deltaWg.Done()
+				for job := range jobChan {
+					balanceKey := []byte(fmt.Sprintf("%s%s-%s", types.TokenBalancePrefix, job.tokenAddress, job.owner))
+					var currentBalance uint64
+
+					// Check if we already set an absolute balance for this owner in this batch.
+					// Reading batch.AbsoluteBalances is safe here because the parallel absolute-balance
+					// write goroutine has already completed (wg.Wait() above).
+					if batch.AbsoluteBalances[job.tokenAddress] != nil {
+						if absBalance, exists := batch.AbsoluteBalances[job.tokenAddress][job.owner]; exists {
+							currentBalance = absBalance
+
+							var newBalance uint64
+							if job.delta < 0 {
+								if currentBalance < uint64(-job.delta) {
+									deltaErrChan <- fmt.Errorf("insufficient token balance for %s (has %d, needs %d)", job.owner, currentBalance, uint64(-job.delta))
+									return
+								}
+								newBalance = currentBalance - uint64(-job.delta)
+							} else {
+								newBalance = currentBalance + uint64(job.delta)
+							}
+
+							// Update the in-batch absolute balance so any subsequent read
+							// of this entry within the same block sees the final value.
+							// Safe: map keys are unique so no two workers touch the same entry.
+							batch.AbsoluteBalances[job.tokenAddress][job.owner] = newBalance
+
+							balanceBytes := make([]byte, 8)
+							binary.BigEndian.PutUint64(balanceBytes, newBalance)
+							if err := wb.Set(balanceKey, balanceBytes); err != nil {
+								deltaErrChan <- err
+								return
+							}
+							continue
 						}
-						newBalance = currentBalance - uint64(-delta)
-					} else {
-						newBalance = currentBalance + uint64(delta)
 					}
 
-					// Update the absolute balance map so subsequent operations see the new balance
-					batch.AbsoluteBalances[tokenAddress][owner] = newBalance
+					// No absolute balance in this batch — read current value from DB.
+					err := c.db.View(func(txn *badger.Txn) error {
+						item, err := txn.Get(balanceKey)
+						if err == badger.ErrKeyNotFound {
+							currentBalance = 0
+							return nil
+						}
+						if err != nil {
+							return err
+						}
+						return item.Value(func(val []byte) error {
+							currentBalance = binary.BigEndian.Uint64(val)
+							return nil
+						})
+					})
+					if err != nil {
+						deltaErrChan <- fmt.Errorf("failed to read current balance for %s-%s: %w", job.tokenAddress, job.owner, err)
+						return
+					}
 
-					// Write new balance
+					var newBalance uint64
+					if job.delta < 0 {
+						if currentBalance < uint64(-job.delta) {
+							deltaErrChan <- fmt.Errorf("insufficient token balance for %s (has %d, needs %d)", job.owner, currentBalance, uint64(-job.delta))
+							return
+						}
+						newBalance = currentBalance - uint64(-job.delta)
+					} else {
+						newBalance = currentBalance + uint64(job.delta)
+					}
+
 					balanceBytes := make([]byte, 8)
 					binary.BigEndian.PutUint64(balanceBytes, newBalance)
 					if err := wb.Set(balanceKey, balanceBytes); err != nil {
-						return err
+						deltaErrChan <- err
+						return
 					}
-					continue
 				}
-			}
+			}()
+		}
 
-			// No absolute balance set, need to read from DB
-			err := c.db.View(func(txn *badger.Txn) error {
-				item, err := txn.Get(balanceKey)
-				if err == badger.ErrKeyNotFound {
-					currentBalance = 0
-					return nil
-				}
-				if err != nil {
-					return err
-				}
-				return item.Value(func(val []byte) error {
-					currentBalance = binary.BigEndian.Uint64(val)
-					return nil
-				})
-			})
+		deltaWg.Wait()
+		close(deltaErrChan)
+
+		for err := range deltaErrChan {
 			if err != nil {
-				return fmt.Errorf("failed to read current balance for %s-%s: %w", tokenAddress, owner, err)
-			}
-
-			// Apply delta
-			var newBalance uint64
-			if delta < 0 {
-				if currentBalance < uint64(-delta) {
-					return fmt.Errorf("insufficient token balance for %s (has %d, needs %d)", owner, currentBalance, uint64(-delta))
-				}
-				newBalance = currentBalance - uint64(-delta)
-			} else {
-				newBalance = currentBalance + uint64(delta)
-			}
-
-			// Write new balance
-			balanceBytes := make([]byte, 8)
-			binary.BigEndian.PutUint64(balanceBytes, newBalance)
-			if err := wb.Set(balanceKey, balanceBytes); err != nil {
-				return err
-			}
-		}
-	}
-
-	// Write allowances
-	for tokenAddress, ownerAllowances := range batch.Allowances {
-		for owner, spenderAllowances := range ownerAllowances {
-			for spender, amount := range spenderAllowances {
-				allowanceKey := []byte(fmt.Sprintf("%s%s-%s-%s", types.TokenAllowancePrefix, tokenAddress, owner, spender))
-				allowanceBytes := make([]byte, 8)
-				binary.BigEndian.PutUint64(allowanceBytes, amount)
-				if err := wb.Set(allowanceKey, allowanceBytes); err != nil {
-					return err
-				}
-			}
-		}
-	}
-
-	// Delete allowances
-	for tokenAddress, ownerDeletes := range batch.AllowanceDeletes {
-		for owner, spenderDeletes := range ownerDeletes {
-			for spender := range spenderDeletes {
-				allowanceKey := []byte(fmt.Sprintf("%s%s-%s-%s", types.TokenAllowancePrefix, tokenAddress, owner, spender))
-				if err := wb.Delete(allowanceKey); err != nil {
-					log.Printf("WARN: Failed to delete allowance key %s: %v", allowanceKey, err)
-				}
-			}
-		}
-	}
-
-	// Write history entries
-	for _, history := range batch.HistoryEntries {
-		historyBytes, err := jsoniter.Marshal(history)
-		if err != nil {
-			return fmt.Errorf("failed to marshal token history: %w", err)
-		}
-
-		timestampStr := history.Timestamp.Format(time.RFC3339Nano)
-
-		// Index for sender's history
-		if history.From != "" && history.From != "0x0" {
-			fromHistoryKey := []byte(fmt.Sprintf("tidx-token-from-%s-%s-%s", history.From, timestampStr, history.TxHash))
-			if err := wb.Set(fromHistoryKey, historyBytes); err != nil {
-				return err
-			}
-		}
-
-		// Index for recipient's history
-		if history.To != "" && history.To != "0x0" {
-			toHistoryKey := []byte(fmt.Sprintf("tidx-token-to-%s-%s-%s", history.To, timestampStr, history.TxHash))
-			if err := wb.Set(toHistoryKey, historyBytes); err != nil {
 				return err
 			}
 		}
@@ -706,6 +831,5 @@ func (c *Client) ApplyTokenBatchToWriteBatch(batch *TokenBatchOperations, wb *ba
 	log.Printf("[TOKEN-BATCH] Applied %d token creates, %d updates, %d balance changes, %d allowances, %d history entries",
 		len(batch.TokenCreates), len(batch.TokenUpdates), len(batch.BalanceChanges),
 		len(batch.Allowances), len(batch.HistoryEntries))
-
 	return nil
 }

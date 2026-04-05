@@ -1,10 +1,10 @@
 package handler
 
 import (
-	"fmt"
 	"grapthway/pkg/dependency"
 	"grapthway/pkg/ledger/types"
 	"grapthway/pkg/model"
+	"grapthway/pkg/util"
 	"net/http"
 	"time"
 
@@ -13,6 +13,7 @@ import (
 
 func SetAllowanceHandler(deps *dependency.Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		now := time.Now()
 		ownerAddress, ok := r.Context().Value("authenticatedUser").(string)
 		if !ok || ownerAddress == "" {
 			http.Error(w, "Authenticated user not found in context", http.StatusInternalServerError)
@@ -36,13 +37,13 @@ func SetAllowanceHandler(deps *dependency.Dependencies) http.HandlerFunc {
 		amountMicro := uint64(payload.Amount * model.GCU_MICRO_UNIT)
 
 		tx := types.Transaction{
-			ID:             fmt.Sprintf("tx-set-allowance-%d", time.Now().UnixNano()),
+			ID:             util.GenerateTxID("tx-set-allowance-", ownerAddress, payload.Spender, amountMicro, now.UnixNano()),
 			Type:           model.SetAllowanceTransaction,
 			From:           ownerAddress,
 			To:             payload.Spender,
 			AllowanceLimit: amountMicro,
-			Timestamp:      time.Now(),
-			CreatedAt:      time.Now(),
+			Timestamp:      now,
+			CreatedAt:      now,
 			Nonce:          payload.Nonce,
 		}
 
@@ -62,6 +63,7 @@ func SetAllowanceHandler(deps *dependency.Dependencies) http.HandlerFunc {
 
 func RemoveAllowanceHandler(deps *dependency.Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		now := time.Now()
 		ownerAddress, ok := r.Context().Value("authenticatedUser").(string)
 		if !ok || ownerAddress == "" {
 			http.Error(w, "Authenticated user not found in context", http.StatusInternalServerError)
@@ -78,12 +80,12 @@ func RemoveAllowanceHandler(deps *dependency.Dependencies) http.HandlerFunc {
 		}
 
 		tx := types.Transaction{
-			ID:        fmt.Sprintf("tx-remove-allowance-%d", time.Now().UnixNano()),
+			ID:        util.GenerateTxID("tx-remove-allowance-", ownerAddress, payload.Spender, 0, now.UnixNano()),
 			Type:      model.RemoveAllowanceTransaction,
 			From:      ownerAddress,
 			To:        payload.Spender,
-			Timestamp: time.Now(),
-			CreatedAt: time.Now(),
+			Timestamp: now,
+			CreatedAt: now,
 			Nonce:     payload.Nonce,
 		}
 

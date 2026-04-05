@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grapthway: The Sovereign Execution Protocol - A Technical White Paper (v1.0)</title>
+    <title>Grapthway: The Sovereign Execution Protocol - A Technical White Paper (v2.0)</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
@@ -245,7 +245,7 @@
         <div class="header">
             <h1>Grapthway: The Sovereign Execution Protocol</h1>
             <div class="subtitle">A Technical White Paper</div>
-            <div class="version">Version 1.0 | December 30, 2025</div>
+            <div class="version">Version 2.0 | April 2026</div>
         </div>
         
         <div class="abstract">
@@ -1191,7 +1191,7 @@
 
         <h2 id="s11">11. Roadmap</h2>
         
-        <h3>Phase 1 (Current): Core Infrastructure</h3>
+        <h3>Phase 1 (v1.0): Core Infrastructure</h3>
         <ul>
             <li>✅ DPoS consensus with deterministic leader selection</li>
             <li>✅ Parallel transaction processing (4096 shards)</li>
@@ -1199,6 +1199,30 @@
             <li>✅ Allowance-based delegated transfers</li>
             <li>✅ Durable workflows with automatic failover</li>
             <li>✅ GraphQL federation and schema stitching</li>
+        </ul>
+
+        <h3>Phase 1.5 (v2.0, Released): Protocol Hardening & Pipeline Correctness</h3>
+        <ul>
+            <li>✅ <strong>Assign propagation fix</strong> — non-durable REST pipeline context correctly passed to <code>executeRESTRequest</code></li>
+            <li>✅ <strong>ErrMissingBatchTxs fix</strong> — dynamic pre-proposal cache poll window (200–600ms), fallback to other validators, and new <code>/grapthway/push-txs/1.0.0</code> direct P2P stream for confirmed tx delivery</li>
+            <li>✅ <strong>Block fallback rate fix</strong> — five independent gossip worker pools (<code>GOMAXPROCS×16</code>) for block shreds, pre-proposals, transactions, pre-validated txs, and control messages; eliminates pre-proposal channel starvation</li>
+            <li>✅ <strong>Unbounded goroutine fix</strong> — <code>GOMAXPROCS×16</code> worker pools in <code>SynchronizeMempool</code>, <code>RequestMissingTx</code>, <code>RequestChainTipQuorum</code>, <code>GetLiveAccountStatesBatch</code>, and <code>ensureTransactionPropagation</code></li>
+            <li>✅ <strong>Parallel token batch writes</strong> — six independent write sections in <code>ApplyTokenBatchToWriteBatch</code> run concurrently under <code>sync.WaitGroup</code></li>
+            <li>✅ <strong>ProposalID fix</strong> — <code>ProposalID</code> mapped in proto-to-model block converter; eliminates always-empty cache key lookup</li>
+            <li>✅ <strong>Deferred propagation cleanup</strong> — tx propagation state cleaned at block-1 with atomic deduplication via <code>LoadOrStore</code></li>
+            <li>✅ <strong>Deterministic transaction IDs</strong> — SHA-256-based <code>GenerateTxID</code> replaces simple string concatenation across all transaction sites</li>
+            <li>✅ <strong>Dynamic path interpolation</strong> — <code>$request.body.field</code>, <code>$args.field</code>, <code>$field</code> variables resolved in REST step paths at runtime</li>
+            <li>✅ <strong>GET query param context fix</strong> — <code>pipelineContext</code> no longer re-declared empty inside <code>executeRESTRequest</code></li>
+            <li>✅ <strong>Pipeline context exposed across all transports</strong> — <code>args</code> and <code>request.body</code> available for <code>$</code>-interpolation in REST, WebSocket, and GraphQL entry points</li>
+            <li>✅ <strong>Durable workflow assign dot-path fix</strong> — three-priority resolution chain matches non-durable behaviour for nested path traversal</li>
+            <li>✅ <strong>GraphQL mutation detection expanded</strong> — <code>insert</code>, <code>upsert</code>, <code>remove</code> added; <code>step.Method = "mutation"</code> honoured as explicit override</li>
+            <li>✅ <strong>Dynamic developer address in service key</strong> — <code>$-prefixed</code> variable in composite key developer-address resolved from pipeline context</li>
+            <li>✅ <strong>PATCH method support</strong> — added to allowed REST methods</li>
+            <li>✅ <strong>Enhanced route &amp; pipeline matching</strong> — <code>:param</code> wildcard segments and three-pass priority matching (<code>matchRoutePattern</code>, <code>matchPipeline</code>)</li>
+            <li>✅ <strong>WebSocket upgrade compatibility</strong> — <code>wsPipelinedProxy</code> runs pre-pipelines on WS connections; <code>?token</code> promoted to <code>Authorization</code>; <code>LoggingResponseWriter</code> gains <code>Hijack()</code></li>
+            <li>✅ <strong>Durable workflow steps route through gateway</strong> — auth and billing pre-pipelines now run for REST and GraphQL steps inside durable workflows; <code>pickGatewayInstance()</code> helper shared across all call sites</li>
+            <li>✅ <strong>Official Go SDK</strong> — multi-node failover, latency routing, thread-safe account management, middleware</li>
+            <li>✅ <strong>Official JavaScript/TypeScript SDK</strong> — Zustand account store, multi-node failover, Express middleware</li>
         </ul>
 
         <h3>Phase 2 (Q1 2026): Enhanced Security</h3>
@@ -1210,8 +1234,10 @@
 
         <h3>Phase 3 (Q4 2026): Developer Tooling</h3>
         <ul>
+            <li>✅ SDK for JavaScript/TypeScript (released in v2.0)</li>
+            <li>✅ SDK for Go (released in v2.0)</li>
             <li>🔲 Browser-based IDE for workflow development</li>
-            <li>🔲 SDKs for JavaScript, Python, Go, and Rust</li>
+            <li>🔲 SDKs for Python and Rust</li>
             <li>🔲 Testing framework with local network simulation</li>
             <li>🔲 Analytics dashboard for API usage metrics</li>
         </ul>

@@ -1,0 +1,1259 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grapthway: Protokol Eksekusi Berdaulat - White Paper Teknis (v2.0)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+    <style>
+        @media print {
+            body { margin: 0; font-size: 10pt; }
+            .page-break { page-break-before: always; }
+            .no-print { display: none; }
+            .content-wrapper { box-shadow: none; border: none; }
+            /* Ditambahkan dari file EN */
+            pre {
+                background: #fff !important;
+                border: 1px solid #dee2e6;
+                page-break-inside: avoid;
+            }
+        }
+        
+        body {
+            font-family: 'Lora', serif;
+            line-height: 1.7;
+            background: #f8f9fa;
+            color: #212529;
+            display: flex;
+            justify-content: center;
+            padding: 2rem 0;
+        }
+        
+        .content-wrapper {
+            max-width: 8.5in;
+            width: 100%;
+            background: white;
+            padding: 1in;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            border: 1px solid #dee2e6;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+            border-bottom: 2px solid #212529;
+            padding-bottom: 1rem;
+        }
+        
+        h1 {
+            font-family: 'Inter', sans-serif;
+            font-size: 28px;
+            font-weight: 700;
+            margin: 0 0 0.5rem 0;
+            color: #000;
+        }
+        
+        .subtitle {
+            font-family: 'Inter', sans-serif;
+            font-size: 18px;
+            font-style: italic;
+            margin: 0.5rem 0;
+            color: #495057;
+        }
+        
+        .version {
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            margin-top: 1rem;
+            color: #6c757d;
+        }
+        
+        h2 {
+            font-family: 'Inter', sans-serif;
+            font-size: 22px;
+            font-weight: 700;
+            margin: 2.5rem 0 1.5rem 0;
+            color: #000;
+            border-bottom: 1px solid #dee2e6;
+            padding-bottom: 0.5rem;
+        }
+        
+        h3 {
+            font-family: 'Inter', sans-serif;
+            font-size: 18px;
+            font-weight: 600;
+            margin: 2rem 0 1rem 0;
+            color: #343a40;
+        }
+        
+        h4 {
+            font-family: 'Inter', sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            margin: 1.5rem 0 0.8rem 0;
+            color: #495057;
+        }
+        
+        p, li {
+            margin-bottom: 1rem; /* Disesuaikan dengan EN */
+            text-align: justify;
+        }
+
+        #toc {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 1.5rem 2rem;
+            margin: 2rem 0;
+            border-radius: 8px;
+        }
+
+        #toc h2 {
+            margin-top: 0;
+            border-bottom: none;
+            font-size: 18px;
+        }
+
+        #toc ul {
+            list-style-type: none;
+            padding-left: 0;
+        }
+        #toc > ul > li {
+            font-weight: 600;
+        }
+
+        #toc ul ul {
+            padding-left: 1.5rem;
+            margin-top: 0.5rem;
+        }
+        #toc ul ul li {
+            font-weight: 400;
+        }
+        #toc a {
+            text-decoration: none;
+            color: #0056b3;
+        }
+        #toc a:hover {
+            text-decoration: underline;
+        }
+        
+        .abstract {
+            background: #f8f9fa;
+            padding: 1.5rem;
+            border-left: 5px solid #0056b3;
+            margin: 2rem 0;
+            font-style: italic;
+        }
+        
+        .abstract h2 {
+            margin-top: 0;
+            border-bottom: none;
+            font-size: 18px;
+        }
+        
+        ul, ol { margin: 1rem 0; padding-left: 2rem; }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 2rem 0;
+            font-size: 12px;
+            font-family: 'Inter', sans-serif;
+        }
+        
+        th, td {
+            border: 1px solid #dee2e6;
+            padding: 0.8rem;
+            text-align: left;
+            vertical-align: top;
+        }
+        
+        th { background-color: #f8f9fa; font-weight: 600; }
+
+        .performance-box {
+            background: #e9f5ff;
+            border: 1px solid #a5d8ff;
+            padding: 1.5rem;
+            margin: 2rem 0;
+            border-radius: 8px;
+        }
+
+        .performance-box h3 { margin-top: 0; color: #0056b3; }
+        
+        .emphasis { font-weight: bold; color: #000; }
+        
+        .code {
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            background: #e9ecef;
+            padding: 0.2em 0.4em;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        
+        /* Ditambahkan dari file EN untuk blok <pre> */
+        pre {
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 1rem;
+            border-radius: 8px;
+            font-size: 0.9em;
+            overflow-x: auto;
+            white-space: pre;
+            line-height: 1.5;
+        }
+        
+        pre code {
+            background: none;
+            padding: 0;
+            border-radius: 0;
+            font-size: 1em; /* Mewarisi dari pre */
+        }
+        
+        .architecture-diagram {
+            width: 100%;
+            margin: 2rem 0;
+            font-family: 'Inter', sans-serif;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 1rem;
+            background: #f8f9fa;
+        }
+        
+        .print-button {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #0056b3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            z-index: 100;
+        }
+        
+        .print-button:hover { background: #004494; }
+        
+        .footer {
+            margin-top: 3rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid #dee2e6;
+            text-align: center;
+            font-size: 12px;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <button class="print-button no-print" onclick="window.print()">Cetak/Simpan PDF</button>
+    
+    <div class="content-wrapper">
+        <div class="header">
+            <h1>Grapthway: Protokol Eksekusi Berdaulat</h1>
+            <div class="subtitle">White Paper Teknis</div>
+            <div class="version">Versi 2.0 | April 2026</div>
+        </div>
+        
+        <div class="abstract">
+            <h2>Abstrak</h2>
+            <p>Lanskap digital kontemporer menyajikan dikotomi yang tajam bagi para pengembang: mengorbankan kedaulatan demi kinerja dan skalabilitas platform Web2 terpusat, atau bersaing dengan kompleksitas, biaya, dan keterbatasan kinerja yang mendalam dari blockchain Web3. Protokol Grapthway muncul sebagai paradigma baru, menolak kompromi ini. Ini adalah <strong>Protokol Eksekusi Berdaulat</strong> yang direkayasa dengan cermat untuk memberdayakan pengembang mengubah layanan Web2 standar apa pun menjadi aplikasi terdesentralisasi (dApp) yang tangguh dan berkinerja tinggi.</p>
+            <p>Diciptakan di atas jaringan peer-to-peer yang sepenuhnya memanfaatkan <strong>libp2p</strong>, Grapthway memperkenalkan lapisan orkestrasi yang dapat diprogram dan diamankan secara kripto-ekonomi yang beroperasi secara independen dari logika inti aplikasi. Ini memungkinkan pengembang untuk mempertahankan tumpukan teknologi dan lingkungan hosting yang ada. Ekonomi asli protokol didukung oleh token <strong>Grapthway Compute Unit (GCU)</strong>, yang memfasilitasi operasi berbiaya rendah dan dapat diprediksi bagi pengembang dan menyediakan struktur insentif yang adil bagi Operator Node independen yang mengamankan jaringan.</p>
+            <p>Dengan memisahkan logika aplikasi dari lapisan eksekusi milik komunitas, Grapthway menyintesiskan kinerja Web2 dengan kedaulatan Web3, sehingga mengkatalisasi internet yang lebih terbuka, tangguh, dan berpusat pada kreator.</p>
+        </div>
+
+        <div class="page-break"></div>
+        <nav id="toc">
+            <h2>Daftar Isi</h2>
+            <!-- Daftar Isi disinkronkan dari file EN -->
+            <ul>
+                <li><a href="#s1">1. Masalah: Pilihan yang Salah</a></li>
+                <li><a href="#s2">2. Arsitektur Inti</a></li>
+                <li><a href="#s3">3. Lapisan Eksekusi Berdaulat</a></li>
+                <li><a href="#s4">4. Blockchain Lapisan 1: Konsensus Throughput Tinggi</a></li>
+                <li><a href="#s5">5. Sistem Token Asli (Native)</a></li>
+                <li><a href="#s6">6. Model Ekonomi</a></li>
+                <li><a href="#s7">7. Kinerja & Skalabilitas</a></li>
+                <li><a href="#s8">8. Model Keamanan</a></li>
+                <li><a href="#s9">9. Perbandingan dengan Platform yang Ada</a></li>
+                <li><a href="#s10">10. Kasus Penggunaan</a></li>
+                <li><a href="#s11">11. Peta Jalan (Roadmap)</a></li>
+                <li><a href="#s12">12. Kesimpulan</a></li>
+            </ul>
+        </nav>
+        
+        <div class="page-break"></div>
+
+        <h2 id="s1">1. Masalah: Pilihan yang Salah</h2>
+        <p>Evolusi internet adalah kisah tentang tarik-ulur (trade-off).</p>
+
+        <h3>1.1 Platform Web2</h3>
+        <p><strong>Contoh:</strong> AWS, Google Cloud, Vercel</p>
+        <p><strong>Kekuatan:</strong> Pengalaman developer dan skalabilitas yang luar biasa</p>
+        <p><strong>Keterbatasan:</strong></p>
+        <ul>
+            <li><strong>Vendor Lock-In:</strong> Ketergantungan pada API dan infrastruktur proprietary</li>
+            <li><strong>Risiko Sensor:</strong> Entitas terpusat dapat menangguhkan layanan secara sepihak</li>
+            <li><strong>Ekonomi Tidak Transparan:</strong> Harga yang tidak dapat diprediksi dan ekstraksi keuntungan</li>
+            <li><strong>Titik Kegagalan Tunggal:</strong> Pemadaman katastropik memengaruhi jutaan orang</li>
+        </ul>
+
+        <h3>1.2 Platform Web3</h3>
+        <p><strong>Contoh:</strong> Ethereum, Solana</p>
+        <p><strong>Kekuatan:</strong> Kepercayaan terdesentralisasi dan ketahanan terhadap sensor</p>
+        <p><strong>Keterbatasan:</strong></p>
+        <ul>
+            <li><strong>Hambatan Kinerja:</strong> 15-100 TPS membatasi aplikasi dunia nyata</li>
+            <li><strong>Biaya Volatil:</strong> Biaya gas berfluktuasi liar, membuat penganggaran menjadi tidak mungkin</li>
+            <li><strong>Friksi Developer:</strong> Memerlukan pembelajaran Solidity, Rust, atau bahasa khusus</li>
+            <li><strong>Arsitektur Monolitik:</strong> Semua logika harus dieksekusi on-chain dalam satu VM</li>
+        </ul>
+
+        <p><strong>Grapthway menyediakan jalan ketiga.</strong> Ini adalah protokol yang dibangun di atas keyakinan bahwa developer tidak harus memilih antara performa dan kebebasan.</p>
+
+        <div class="page-break"></div>
+        
+        <h2 id="s2">2. Arsitektur Inti</h2>
+        
+        <h3>2.1 Model L1 Hibrida + Eksekusi Off-Chain</h3>
+
+        <p>Grapthway mendefinisikan kembali apa itu protokol Lapisan 1 (L1). Berbeda dengan blockchain serba guna yang lambat karena harus menjalankan semua logika aplikasi secara on-chain, Grapthway memiliki <strong>blockchain L1 yang dibuat khusus</strong> yang dioptimalkan secara khusus untuk tugas-tugas intinya: <strong>penyelesaian ekonomi, operasi token, dan keamanan jaringan</strong>. Logika aplikasi yang kompleks ditangani oleh <strong>Lapisan Eksekusi Berdaulat</strong> off-chain Grapthway yang sangat skalabel.</p>
+
+        <p>Arsitektur hibrida ini memungkinkan protokol berfungsi sebagai pintu depan yang cerdas, aman, dan tangguh yang mengubah aplikasi apa pun menjadi dApp tanpa mengorbankan performa.</p>
+
+        <h3>2.2 Pendaftaran & Kepemilikan Layanan</h3>
+
+        <p>Inovasi intinya adalah <strong>pemisahan aplikasi dari logika eksekusi dan aksesnya</strong>. Developer membangun aplikasi menggunakan teknologi pilihan mereka (Node.js, Python, Go, Rust) dan meng-hosting-nya di mana saja. Mereka kemudian mendaftarkan aplikasi ini ke Protokol Grapthway, mendefinisikan seperangkat aturan, skema, dan pipeline orkestrasi yang kuat tentang bagaimana dunia dapat berinteraksi dengannya.</p>
+
+        <p>Semua layanan diberi namespace di bawah alamat dompet unik developer, diakses melalui path seperti:</p>
+        <p><code class="code">/{alamat_dompet}/{nama_subgraph}/graphql</code></p>
+
+        <p>Protokol ini <strong>menegakkan kepemilikan secara kriptografis</strong> menggunakan tanda tangan ECDSA secp256k1, memastikan bahwa hanya pencipta asli yang dapat mempublikasikan pembaruan pada layanan mereka. Konfigurasi layanan disimpan dalam distributed hash table (DHT) dengan content-addressed identifiers (CID), membuatnya tahan rusak dan dapat diverifikasi.</p>
+
+        <h3>2.3 Jaringan P2P Sepenuhnya Terdesentralisasi</h3>
+
+        <p>Protokol Grapthway adalah sistem yang sepenuhnya terdesentralisasi yang dibangun di atas <strong>libp2p</strong>. Arsitektur ini menghilangkan semua dependensi pusat untuk operasi jaringan inti:</p>
+
+        <ul>
+            <li><strong>Penemuan Layanan:</strong> Resolusi berbasis DHT menghilangkan registri pusat</li>
+            <li><strong>Sinkronisasi Status:</strong> Protokol GossipSub menyiarkan blok, transaksi, dan pembaruan validator</li>
+            <li><strong>Komunikasi Konsensus:</strong> Aliran libp2p langsung untuk proposal pra-blok dan pengakuan</li>
+            <li><strong>Validasi Peer:</strong> Jabat tangan kriptografis memverifikasi klaim stake dan perangkat keras sebelum koneksi</li>
+        </ul>
+
+        <p>Ketahanan jaringan berasal dari fondasi P2P berlapis-lapisnya, yang menampilkan topologi self-healing untuk mencegah partisi jaringan dan memastikan ketersediaan tinggi.</p>
+        
+        <svg viewBox="0 0 800 600" class="architecture-diagram" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <marker id="arrow-id" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                    <path d="M 0 0 L 10 5 L 0 10 z" fill="#333" />
+                </marker>
+            </defs>
+            <style>
+                .label { font-size: 11px; font-family: 'Inter', sans-serif; fill: #333; }
+                .label-bold { font-weight: bold; font-size: 12px; }
+                .label-sm { font-size: 10px; fill: #555;}
+                .box { stroke: #333; stroke-width: 1; fill: #fff; }
+                .box-blue { fill: #e9f5ff; stroke: #a5d8ff; }
+                .box-green { fill: #e6f9f0; stroke: #a3e9d1; }
+                .box-gray { fill: #f8f9fa; stroke: #dee2e6; }
+                .line { stroke: #333; stroke-width: 1.5; marker-end: url(#arrow-id); }
+                .line-dash { stroke-dasharray: 5 3; }
+            </style>
+            <rect x="10" y="240" width="100" height="60" rx="5" class="box box-green" />
+            <text x="60" y="275" text-anchor="middle" class="label label-bold">Pengguna / Klien</text>
+            <rect x="690" y="240" width="100" height="60" rx="5" class="box box-green" />
+            <text x="740" y="265" text-anchor="middle" class="label label-bold">Layanan Web2</text>
+            <text x="740" y="280" text-anchor="middle" class="label label-bold">Developer</text>
+            <rect x="350" y="10" width="100" height="50" rx="5" class="box box-green" />
+            <text x="400" y="35" text-anchor="middle" class="label label-bold">Developer</text>
+            <rect x="130" y="80" width="540" height="480" rx="10" class="box-gray" />
+            <text x="400" y="105" text-anchor="middle" class="label-bold" style="font-size: 14px;">Jaringan P2P Grapthway</text>
+            <rect x="150" y="120" width="240" height="200" rx="5" class="box-blue" />
+            <text x="270" y="140" text-anchor="middle" class="label label-bold">Node Server (API Publik)</text>
+            <rect x="160" y="155" width="220" height="60" rx="3" class="box" />
+            <text x="270" y="185" text-anchor="middle" class="label">Executor Pipeline (Sinkron)</text>
+            <rect x="160" y="225" width="220" height="60" rx="3" class="box" />
+            <text x="270" y="255" text-anchor="middle" class="label">Gateway GraphQL/REST</text>
+            <rect x="410" y="120" width="240" height="200" rx="5" class="box-blue" />
+            <text x="530" y="140" text-anchor="middle" class="label label-bold">Node Worker (Asinkron)</text>
+            <rect x="420" y="155" width="220" height="60" rx="3" class="box" />
+            <text x="530" y="185" text-anchor="middle" class="label">Mesin Workflow</text>
+            <rect x="150" y="340" width="520" height="100" rx="5" class="box" />
+            <text x="410" y="365" text-anchor="middle" class="label label-bold">Lapisan P2P Bersama</text>
+            <text x="410" y="385" text-anchor="middle" class="label">GossipSub, Kademlia DHT, Peer Exchange</text>
+            <rect x="150" y="450" width="520" height="100" rx="5" class="box" />
+            <text x="410" y="475" text-anchor="middle" class="label label-bold">Ledger L1 Tereplikasi</text>
+            <text x="410" y="495" text-anchor="middle" class="label">Konsensus DPoS & State Machine</text>
+            <path d="M 110 270 L 160 270" class="line" fill="none" />
+            <text x="135" y="265" text-anchor="middle" class="label-sm">Permintaan API</text>
+            <path d="M 160 280 L 110 280" class="line" fill="none" />
+            <text x="135" y="292" text-anchor="middle" class="label-sm">Respons Final</text>
+            <path d="M 400 60 L 400 80" class="line" fill="none" />
+            <text x="445" y="75" class="label-sm">Publikasi Konfig</text>
+            <path d="M 380 255 L 690 255" class="line" fill="none" />
+            <text x="535" y="250" text-anchor="middle" class="label-sm">Permintaan Proksi</text>
+            <path d="M 690 265 L 380 265" class="line" fill="none" />
+            <text x="535" y="277" text-anchor="middle" class="label-sm">Respons</text>
+            <path d="M 270 320 L 270 340" class="line" fill="none" />
+            <path d="M 530 320 L 530 340" class="line" fill="none" />
+            <path d="M 270 440 L 270 450" class="line" fill="none" />
+            <path d="M 530 440 L 530 450" class="line" fill="none" />
+            <path d="M 380 185 C 400 230, 400 230, 420 185" class="line line-dash" fill="none" />
+            <text x="400" y="225" text-anchor="middle" class="label-sm">Umumkan Tugas (Gossip)</text>
+            <path d="M 650 185 C 670 220, 670 220, 690 240" class="line line-dash" fill="none" />
+            <text x="675" y="220" class="label-sm">Panggilan API Eksternal</text>
+        </svg>
+
+        <div class="page-break"></div>
+
+        <h2 id="s3">3. Lapisan Eksekusi Berdaulat</h2>
+        <p>Inovasi paling kuat dari Grapthway adalah <strong>Lapisan Eksekusi Berdaulatnya</strong>. Ini adalah jawaban protokol terhadap smart contract, tetapi dengan perbedaan penting: logika dieksekusi <strong>off-chain oleh jaringan P2P</strong>, bukan on-chain oleh mesin virtual monolitik. Pilihan arsitektur ini memungkinkan kinerja, skalabilitas, dan fleksibilitas developer tingkat Web2 sambil menggunakan ledger L1 untuk tugas terbaiknya: penyelesaian dan keamanan.</p>
+
+        <p>Lapisan ini terdiri dari dua mode eksekusi utama: <strong>Pipeline</strong> sinkron dan <strong>Workflow Tahan Lama</strong> asinkron.</p>
+
+        <h3>3.1 Mesin Pipeline (Middleware Sinkron)</h3>
+
+        <p>Mesin Pipeline adalah sistem middleware yang kuat yang mencegat setiap permintaan API yang masuk. Developer mendefinisikan <code class="code">PipelineConfig</code>, yang merupakan serangkaian langkah terurut untuk dieksekusi <strong>sebelum (pre)</strong> dan <strong>sesudah (post)</strong> permintaan API utama diproksi ke layanan developer.</p>
+
+        <p><strong>Kemampuan:</strong></p>
+        <ul>
+            <li><strong>Otentikasi & Otorisasi:</strong> Memverifikasi tanda tangan permintaan secara kriptografis</li>
+            <li><strong>Pembatasan Laju (Rate Limiting):</strong> Menegakkan batasan per pengguna atau per IP</li>
+            <li><strong>Pengukuran & Penagihan:</strong> Secara otomatis menagih pengguna dalam GCU atau token kustom untuk penggunaan API</li>
+            <li><strong>Transformasi Data:</strong> Memodifikasi muatan permintaan/respons menggunakan ekspresi</li>
+            <li><strong>Orkestrasi Multi-Layanan:</strong> Melakukan fan-out permintaan ke beberapa layanan dan menggabungkan respons</li>
+            <li><strong>Kontrol Akses:</strong> Memerlukan kepemilikan token atau saldo minimum sebelum memberikan akses</li>
+        </ul>
+
+        <p>Pipeline dieksekusi <strong>secara bersamaan</strong> di beberapa node di jaringan, dengan hasil divalidasi melalui konsensus kriptografis.</p>
+
+        <h3>3.2 Mesin Workflow Tahan Lama (State Machine Asinkron)</h3>
+
+        <p>Untuk proses yang berjalan lama, melibatkan beberapa langkah independen, atau harus bertahan dari kegagalan node, Grapthway menyediakan <strong>Mesin Workflow Tahan Lama</strong>. Sebuah workflow hanyalah sebuah pipeline yang ditandai sebagai <code class="code">isDurable: true</code>.</p>
+
+        <p><strong>Arsitektur:</strong></p>
+        <ul>
+            <li><strong>Koordinator:</strong> Mengelola status instance workflow dan penugasan tugas</li>
+            <li><strong>Pekerja:</strong> Mengeksekusi langkah-langkah workflow individu atas nama koordinator</li>
+            <li><strong>Checkpointing Berbasis DHT:</strong> Status workflow disimpan ke DHT setelah setiap langkah</li>
+            <li><strong>Failover Otomatis:</strong> Jika koordinator offline, pekerja mendeteksi ini, menanyakan DHT untuk status terakhir yang diketahui, dan mengusulkan diri mereka sebagai koordinator baru</li>
+        </ul>
+
+        <p><strong>Integritas Transaksional:</strong></p>
+        <p>Mesin workflow menyertakan mekanisme <strong>rollback</strong> yang kuat untuk operasi ekonomi. Jika sebuah langkah yang mengeksekusi transaksi ledger gagal pada langkah berikutnya yang tidak dapat diulang, mesin secara otomatis memulai serangkaian transaksi kompensasi:</p>
+        <ul>
+            <li><code class="code">RollbackDebitTransaction</code>: Mengambil dana dari penerima</li>
+            <li><code class="code">RollbackCreditTransaction</code>: Mengembalikan dana ke pengirim asli</li>
+        </ul>
+
+        <p>Ini memastikan workflow menjaga integritas transaksional bahkan saat menghadapi kegagalan.</p>
+
+        <h3>3.3 Ekonomi Terprogram melalui Allowance (Izin)</h3>
+
+        <p>Untuk memungkinkan ekonomi terprogram yang dibutuhkan oleh pipeline dan workflow, ledger Grapthway mencakup dua jenis transaksi penting yang berfungsi sebagai alternatif "smart contract" asli protokol:</p>
+
+        <ul>
+            <li><strong>SetAllowanceTransaction:</strong> Pengguna memberikan izin kepada "spender" (misalnya, koordinator workflow) untuk membelanjakan hingga jumlah tertentu atas nama mereka</li>
+            <li><strong>DelegatedTransferTransaction:</strong> Spender mengeksekusi transfer menggunakan allowance, dengan bukti otorisasi kriptografis</li>
+        </ul>
+
+        <p>Kombinasi yang kuat ini memungkinkan developer untuk membangun aplikasi di mana pengguna memberikan izin sekali, memungkinkan transaksi mikro otomatis, frekuensi tinggi, dan aman terjadi di latar belakang, didorong oleh logika dalam Pipeline dan Workflow.</p>
+
+        <p><strong>Keamanan tetap terjaga karena:</strong></p>
+        <ul>
+            <li>Identitas spender diverifikasi secara kriptografis menggunakan kunci operasional node mereka</li>
+            <li>Allowance memiliki batasan eksplisit yang tidak dapat dilampaui</li>
+            <li>Bahkan selama failover koordinator workflow, koordinator baru harus memiliki allowance yang valid untuk bertindak sebagai spender</li>
+        </ul>
+        
+        <div class="page-break"></div>
+
+        <h2 id="s4">4. Blockchain Lapisan 1: Konsensus Throughput Tinggi</h2>
+        <p>Protokol ini mengimplementasikan ledger Lapisan 1 throughput tinggi berdasarkan model konsensus <strong>Deterministic Proof-of-Stake (DPoS)</strong> yang ringan dan toleran terhadap kegagalan. Pendekatan ini menyediakan satu sumber kebenaran untuk pengurutan transaksi dan transisi status, mencapai konsistensi matematis pada kecepatan tinggi sambil tetap tangguh terhadap perubahan topologi jaringan.</p>
+
+        <h3>4.1 Pemilihan Pemimpin Deterministik</h3>
+
+        <p>Jaringan beroperasi dengan satu pemimpin sementara untuk setiap blok. Tidak seperti model yang bergantung pada pandangan "langsung" yang sementara dari koneksi jaringan, pemilihan pemimpin Grapthway sepenuhnya didorong oleh <strong>state on-chain</strong>, membuatnya deterministik secara matematis dan kebal terhadap kondisi balapan jaringan.</p>
+
+        <p><strong>Proses:</strong></p>
+        <ol>
+            <li><strong>Penyematan Set Validator:</strong> Setiap blok berisi bidang <code class="code">NextValidators</code>, yang merupakan snapshot deterministik dari semua validator yang memenuhi syarat untuk ketinggian blok berikutnya</li>
+            <li><strong>Pengurutan Deterministik:</strong> Validator diurutkan berdasarkan ID peer mereka (secara leksikografis)</li>
+            <li><strong>Seleksi Berbasis Hash:</strong> Seed dihasilkan dari hash blok sebelumnya dan ketinggian blok saat ini: <code class="code">seed = SHA256(prevBlockHash + height)</code></li>
+            <li><strong>Operasi Modulo:</strong> Pemimpin dipilih menggunakan: <code class="code">leaderIndex = uint64(seed) % len(validators)</code></li>
+        </ol>
+
+        <p>Karena set validator adalah bagian dari status abadi blok sebelumnya, <strong>setiap node yang jujur di jaringan dijamin akan menghitung pemimpin yang sama persis</strong> untuk ketinggian blok yang sama. Ini sepenuhnya menghilangkan risiko kemacetan jaringan atau fork ketika node terputus, karena sumber kebenaran untuk konsensus adalah chain itu sendiri, bukan status koneksi jaringan langsung yang tidak dapat diandalkan.</p>
+
+        <h3>4.2 Byzantine Fault Tolerance (BFT)</h3>
+
+        <p>Model DPoS menyediakan Byzantine Fault Tolerance, menjamin keamanan dan konsistensi selama supermayoritas validator jujur dan online. Protokol memerlukan kuorum minimal <strong>⅔ + 1</strong> dari validator yang terdaftar dalam set <code class="code">NextValidators</code> blok terakhir untuk menyetujui blok baru.</p>
+
+        <p>Untuk set validator berukuran <code class="code">N</code>, jaringan dapat mentolerir <code class="code">f</code> kegagalan di mana:</p>
+        <p><code class="code">N = 3f + 1</code></p>
+
+        <p><strong>Contoh:</strong> Dengan 10 validator, jaringan dapat mentolerir hingga 3 kegagalan Byzantine.</p>
+
+        <h3>4.3 Pipeline Pembuatan Blok</h3>
+
+        <p>Untuk memaksimalkan efisiensi dan memanfaatkan sepenuhnya perangkat keras multi-core modern, protokol menggunakan pipeline yang canggih dan <strong>terparallelisasi</strong> untuk pembuatan dan finalisasi blok:</p>
+
+        <ol>
+            <li><strong>Siaran Sinyal Siap:</strong> Pemimpin menyiarkan sinyal "next-block-ready" dan menunggu kuorum ⅔ + 1 (timeout 1.5d)</li>
+            <li><strong>Seleksi Transaksi Paralel:</strong> Goroutine pekerja secara bersamaan memindai 4096 shard mempool, memilih hingga 100.000 transaksi valid</li>
+            <li><strong>Agregasi Batch:</strong> Transaksi yang dapat di-batch (transfer, debit, imbalan) diagregasi ke dalam entri <code class="code">BatchAggregationTransaction</code> untuk mengurangi overhead on-chain</li>
+            <li><strong>Penugasan Nonce:</strong> Pekerja paralel menugaskan nonce berurutan ke transaksi dari pengirim yang sama</li>
+            <li><strong>Siaran Pra-Proposal:</strong> Pemimpin melakukan gosip <code class="code">PreBlockProposal</code> yang berisi semua transaksi dengan nonce yang ditugaskan</li>
+            <li><strong>Pra-Validasi Validator:</strong> Setiap validator secara independen membuat ulang batch untuk memverifikasi determinisme, kemudian mengirimkan <code class="code">PreBlockAck</code> yang ditandatangani secara kriptografis ke pemimpin melalui aliran libp2p langsung</li>
+            <li><strong>Pengumpulan ACK:</strong> Pemimpin menunggu ⅔ + 1 ACK pra-blok (timeout 1.5d)</li>
+            <li><strong>Simulasi & Penyaringan:</strong> Pemimpin mensimulasikan eksekusi blok, menyaring transaksi yang akan gagal (celah nonce, saldo tidak mencukupi)</li>
+            <li><strong>Finalisasi Blok:</strong> Pemimpin membuat blok final dengan transaksi valid, menghitung hash blok, dan menyiarkan melalui gosip terpotong (shredded) (potongan 4KB)</li>
+            <li><strong>Pemrosesan Blok Paralel:</strong> Semua validator menerima potongan, merakit kembali blok, dan mengeksekusinya di pool pekerja paralel</li>
+        </ol>
+
+        <p><strong>Karakteristik Kinerja:</strong></p>
+        <ul>
+            <li><strong>Waktu Blok:</strong> Target maksimum 2.5 detik</li>
+            <li><strong>Transaksi Minimum Per Blok:</strong> 10.000 (memicu sinyal pembuatan blok lebih awal)</li>
+            <li><strong>Kedaluwarsa Transaksi:</strong> 60 detik (mencegah mempool membengkak)</li>
+            <li><strong>Sharding:</strong> 4096 shard mempool memungkinkan pemrosesan bersamaan di seluruh inti CPU</li>
+        </ul>
+
+        <svg viewBox="0 0 900 700" class="architecture-diagram" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <marker id="arrow-diag" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                    <path d="M 0 0 L 10 5 L 0 10 z" fill="#333" />
+                </marker>
+            </defs>
+            <style>
+                .label { font-size: 13px; font-family: 'Inter', sans-serif; fill: #333; }
+                .label-bold { font-weight: bold; font-size: 14px; }
+                .label-sm { font-size: 11px; fill: #555; }
+                .box { stroke: #333; stroke-width: 1.5; fill: #fff; }
+                .box-blue { fill: #e9f5ff; stroke: #a5d8ff; }
+                .box-green { fill: #e6f9f0; stroke: #a3e9d1; }
+                .box-orange { fill: #fff4e6; stroke: #ffe8cc; }
+                .box-purple { fill: #f3e8ff; stroke: #e0cffc; }
+                .line { stroke: #333; stroke-width: 1.5; marker-end: url(#arrow-diag); }
+                .line-dash { stroke-dasharray: 5 3; }
+                .title { font-size: 20px; font-weight: bold; text-anchor: middle; font-family: 'Inter', sans-serif; }
+            </style>
+        
+            <text x="450" y="30" class="title">Alur Transaksi & Pembuatan Blok Grapthway</text>
+        
+            <!-- Columns -->
+            <text x="85" y="70" class="label-bold" text-anchor="middle">Pengguna / Klien</text>
+            <line x1="170" y1="50" x2="170" y2="680" style="stroke:#ccc; stroke-width:1;"/>
+            <text x="310" y="70" class="label-bold" text-anchor="middle">Node Server</text>
+            <line x1="450" y1="50" x2="450" y2="680" style="stroke:#ccc; stroke-width:1;"/>
+            <text x="590" y="70" class="label-bold" text-anchor="middle">Pemimpin Blok</text>
+            <line x1="730" y1="50" x2="730" y2="680" style="stroke:#ccc; stroke-width:1;"/>
+            <text x="815" y="70" class="label-bold" text-anchor="middle">Node Validator</text>
+        
+            <!-- User Action -->
+            <rect x="25" y="90" width="120" height="50" rx="5" class="box box-green" />
+            <text x="85" y="120" text-anchor="middle" class="label">Kirim Transfer</text>
+            <path d="M 145 115 L 220 115" class="line" fill="none" />
+            <text x="180" y="110" class="label-sm">Permintaan API</text>
+            
+            <!-- Server Node - Ledger Aggregator -->
+            <rect x="220" y="90" width="180" height="70" rx="5" class="box box-blue" />
+            <text x="310" y="115" text-anchor="middle" class="label-bold">Agregator Ledger</text>
+            <text x="310" y="135" text-anchor="middle" class="label-sm">(Mengumpulkan biaya API)</text>
+            <path d="M 310 160 L 310 190" class="line" fill="none" />
+            <text x="315" y="180" class="label-sm" text-anchor="start">Flush Batch</text>
+        
+            <!-- Server Node - Mempool -->
+            <rect x="220" y="190" width="180" height="100" rx="5" class="box box-orange" />
+            <text x="310" y="215" text-anchor="middle" class="label-bold">Mempool</text>
+            <text x="310" y="235" text-anchor="middle" class="label-sm">Transaksi Mentah:</text>
+            <text x="310" y="250" text-anchor="middle" class="label-sm">- TransferTransaction</text>
+            <text x="310" y="265" text-anchor="middle" class="label-sm">- DebitTransaction</text>
+            <text x="310" y="280" text-anchor="middle" class="label-sm">- RewardTransaction</text>
+            <path d="M 400 240 L 500 240" class="line line-dash" fill="none" />
+            <text x="450" y="235" class="label-sm" text-anchor="middle">Gossip</text>
+        
+            <!-- Block Leader Actions -->
+            <rect x="500" y="130" width="180" height="60" rx="5" class="box box-purple" />
+            <text x="590" y="160" text-anchor="middle" class="label">1. Tunggu</text>
+            <text x="590" y="175" text-anchor="middle" class="label-sm">`NextBlockReady`</text>
+            <path d="M 735 160 L 680 160" class="line" fill="none"/>
+            <text x="705" y="155" class="label-sm" text-anchor="middle">Sinyal</text>
+        
+            <rect x="500" y="210" width="180" height="80" rx="5" class="box box-purple" />
+            <text x="590" y="235" text-anchor="middle" class="label">2. Buat & Siarkan</text>
+            <text x="590" y="255" text-anchor="middle" class="label-bold">PreBlockProposal</text>
+            <text x="590" y="270" text-anchor="middle" class="label-sm">(dengan ProposalID)</text>
+            <path d="M 680 250 L 780 250" class="line" fill="none"/>
+            <text x="730" y="245" class="label-sm" text-anchor="middle">Siarkan</text>
+        
+            <rect x="500" y="360" width="180" height="80" rx="5" class="box box-purple" />
+            <text x="590" y="385" text-anchor="middle" class="label">3. Terima Kuorum</text>
+            <text x="590" y="405" text-anchor="middle" class="label-bold">PreBlockAcks</text>
+            <text x="590" y="420" text-anchor="middle" class="label-sm">(dari Validator)</text>
+            <path d="M 780 390 L 680 390" class="line" fill="none"/>
+            <text x="730" y="385" class="label-sm" text-anchor="middle">Kirim Ack</text>
+        
+            <rect x="500" y="480" width="180" height="180" rx="5" class="box box-purple" />
+            <text x="590" y="505" text-anchor="middle" class="label">4. Finalisasi & Siarkan</text>
+            <text x="590" y="525" text-anchor="middle" class="label-bold">Blok Final</text>
+            <text x="590" y="545" text-anchor="middle" class="label-sm">Berisi:</text>
+            <text x="590" y="565" text-anchor="middle" class="label-sm">- Tx non-batch</text>
+            <text x="590" y="585" text-anchor="middle" class="label-bold">- Transaksi Agregasi</text>
+            <text x="590" y="605" text-anchor="middle" class="label-bold">  Batch</text>
+            <text x="590" y="625" text-anchor="middle" class="label-sm">- Set NextValidators</text>
+            <path d="M 680 560 L 780 560" class="line" fill="none"/>
+            <text x="730" y="555" class="label-sm" text-anchor="middle">Siarkan Shreds</text>
+        
+            <!-- Validator Actions -->
+            <rect x="780" y="280" width="110" height="80" rx="5" class="box box-green" />
+            <text x="835" y="305" text-anchor="middle" class="label">Pra-Validasi</text>
+            <text x="835" y="325" text-anchor="middle" class="label">& Simpan di</text>
+            <text x="835" y="340" text-anchor="middle" class="label-bold">Cache</text>
+            
+            <rect x="780" y="590" width="110" height="80" rx="5" class="box box-green" />
+            <text x="835" y="615" text-anchor="middle" class="label">Periksa Cache</text>
+            <text x="835" y="635" text-anchor="middle" class="label">& Instan</text>
+            <text x="835" y="650" text-anchor="middle" class="label-bold">Komit</text>
+        </svg>
+
+        <h3>4.4 Eksekusi Status Paralel</h3>
+
+        <p>Seluruh ledger direkayasa untuk memanfaatkan arsitektur multi-core untuk performa maksimal. Tugas-tugas yang intensif secara komputasi—seperti pemilihan transaksi, pembuatan batch, penugasan nonce, dan validasi status—dieksekusi oleh <strong>pool goroutine pekerja</strong>.</p>
+
+        <p><strong>Kinerja Terukur:</strong></p>
+        <p>Dalam uji beban pada cluster 3-node yang sederhana, dengan setiap node hanya dialokasikan <strong>2 vCPU dan 2GB RAM</strong>, ledger Grapthway secara konsisten memproses lebih dari <strong>~500 transaksi transfer token per detik (TPS)</strong>.</p>
+
+        <p>Angka utama ini tidak sepenuhnya menggambarkan performa sebenarnya. Setiap transfer memicu operasi debit dan imbalan yang sesuai, yang kemudian diagregasi di tingkat blok. Ini berarti ledger berhasil menangani sekitar <strong>~1000 operasi logis per detik (OPS)</strong>, yang semuanya digabungkan secara efisien on-chain. Ini adalah hasil langsung dari arsitektur pemrosesan paralel end-to-end protokol, dengan pengujian menunjukkan kapasitas pemrosesan sekitar <strong>500 operasi per detik per inti CPU</strong>.</p>
+
+        <p>Desain ini dibuat untuk <strong>skalabilitas vertikal</strong>. Sebagai contoh, meningkatkan skala node menjadi 64 inti CPU secara teoretis akan memberikan peningkatan kapasitas komputasi sebesar 32x, berpotensi membuka throughput hingga ribuan TPS.</p>
+
+        <div class="page-break"></div>
+
+        <!-- BAGIAN BARU DARI EN v1.1 -->
+        <h2 id="s5">5. Sistem Token Asli (Native)</h2>
+        <p>Grapthway menyertakan <strong>sistem token on-chain penuh</strong> tingkat produksi yang menyediakan fungsionalitas mirip ERC-20 tanpa mengharuskan developer untuk menerapkan smart contract kustom. Sistem ini terintegrasi secara mendalam ke dalam blockchain L1 dan mendukung token GCU asli protokol serta token kustom yang dibuat pengguna.</p>
+
+        <h3>5.1 Jenis Token</h3>
+        <p>Protokol mendukung tiga jenis token utama:</p>
+        <ul>
+            <li><strong>FUNGIBLE:</strong> Token standar yang dapat dibagi (seperti ERC-20)</li>
+            <li><strong>NFT:</strong> Non-fungible token dengan pengidentifikasi unik</li>
+            <li><strong>RWA:</strong> Representasi aset dunia nyata (Real-world asset)</li>
+        </ul>
+
+        <h3>5.2 Operasi Token Inti</h3>
+        <p>Semua operasi token dieksekusi sebagai jenis transaksi khusus di blockchain L1:</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Jenis Transaksi</th>
+                    <th>Deskripsi</th>
+                    <th>Penanda Tangan Diperlukan</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code class="code">TOKEN_CREATE</code></td>
+                    <td>Membuat token baru dengan suplai awal dan konfigurasi</td>
+                    <td>Pembuat</td>
+                </tr>
+                <tr>
+                    <td><code class="code">TOKEN_TRANSFER</code></td>
+                    <td>Mentransfer token dari satu alamat ke alamat lain</td>
+                    <td>Pengirim</td>
+                </tr>
+                <tr>
+                    <td><code class="code">TOKEN_APPROVE</code></td>
+                    <td>Menetapkan allowance (izin) bagi spender untuk mentransfer atas nama Anda</td>
+                    <td>Pemilik</td>
+                </tr>
+                <tr>
+                    <td><code class="code">TOKEN_REVOKE</code></td>
+                    <td>Menghapus allowance yang ada</td>
+                    <td>Pemilik</td>
+                </tr>
+                <tr>
+                    <td><code class="code">TOKEN_MINT</code></td>
+                    <td>Membuat token baru (jika diaktifkan dan diotorisasi)</td>
+                    <td>Pembuat</td>
+                </tr>
+                <tr>
+                    <td><code class="code">TOKEN_BURN</code></td>
+                    <td>Menghancurkan token secara permanen</td>
+                    <td>Pemegang</td>
+                </tr>
+                <tr>
+                    <td><code class="code">TOKEN_CONFIG_BURN</code></td>
+                    <td>Memperbarui konfigurasi burn</td>
+                    <td>Pembuat</td>
+                </tr>
+                <tr>
+                    <td><code class="code">TOKEN_CONFIG_MINT</code></td>
+                    <td>Memperbarui konfigurasi mint</td>
+                    <td>Pembuat</td>
+                </tr>
+                <tr>
+                    <td><code class="code">TOKEN_LOCK</code></td>
+                    <td>Mengunci konfigurasi burn/mint secara permanen</td>
+                    <td>Pembuat</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3>5.3 Metadata Token</h3>
+        <p>Setiap token menyimpan metadata on-chain yang komprehensif:</p>
+        <ul>
+            <li><strong>Alamat:</strong> Pengidentifikasi deterministik unik (<code class="code">0xTKN{hash}</code>)</li>
+            <li><strong>Nama & Ticker:</strong> Pengidentifikasi yang dapat dibaca manusia</li>
+            <li><strong>Desimal:</strong> Presisi (didukung 0-6 tempat desimal)</li>
+            <li><strong>Total Suplai:</strong> Suplai beredar saat ini (dapat berubah jika minting diaktifkan)</li>
+            <li><strong>Suplai Awal:</strong> Suplai asli saat pembuatan (tidak dapat diubah)</li>
+            <li><strong>Pembuat:</strong> Alamat yang membuat token</li>
+            <li><strong>Jenis Token:</strong> FUNGIBLE, NFT, atau RWA</li>
+            <li><strong>Metadata Kustom:</strong> String JSON (maks 1KB) untuk data tambahan</li>
+        </ul>
+
+        <h3>5.4 Mekanisme Ekonomi yang Dapat Dikonfigurasi</h3>
+        <p>Token dapat dikonfigurasi dengan model ekonomi yang canggih:</p>
+
+        <h4>Konfigurasi Burn (Pembakaran)</h4>
+<pre><code>{
+  "enabled": true,
+  "burnRatePerTx": 0.5,  // 0.5% dibakar per transfer
+  "manualBurn": true      // Izinkan operasi burn manual
+}</code></pre>
+        <ul>
+            <li><strong>Burn Otomatis:</strong> Persentase dari setiap transfer yang dihancurkan secara permanen</li>
+            <li><strong>Burn Manual:</strong> Pemegang token dapat secara eksplisit membakar kepemilikan mereka</li>
+        </ul>
+
+        <div class="page-break"></div>
+
+        <h4>Konfigurasi Mint (Pencetakan)</h4>
+<pre><code>{
+  "enabled": true,
+  "mintRatePerTx": 0.1,  // 0.1% dicetak per transfer
+  "manualMint": true      // Izinkan pembuat untuk mencetak
+}</code></pre>
+        <ul>
+            <li><strong>Mint Otomatis:</strong> Persentase dari setiap transfer yang menghasilkan token baru</li>
+            <li><strong>Mint Manual:</strong> Pembuat dapat secara eksplisit mencetak token baru ke alamat mana pun</li>
+        </ul>
+
+        <h4>Penguncian Konfigurasi</h4>
+        <p>Pembuat token dapat <strong>mengunci secara permanen</strong> konfigurasi burn/mint dengan mengirimkan transaksi <code class="code">TOKEN_LOCK</code>. Setelah terkunci, konfigurasi menjadi tidak dapat diubah, memberikan jaminan kuat kepada pemegang token tentang dinamika suplai di masa depan.</p>
+
+        <h3>5.5 Sistem Allowance (Transfer Delegasi)</h3>
+        <p>Sistem token menyertakan mekanisme allowance penuh yang identik dengan pola <code class="code">approve</code> dan <code class="code">transferFrom</code> ERC-20:</p>
+        <ol>
+            <li><strong>Pemilik Menyetujui Spender:</strong> Transaksi <code class="code">TOKEN_APPROVE</code> menetapkan allowance</li>
+            <li><strong>Spender Mengeksekusi Transfer:</strong> Spender mengirimkan transaksi dengan:
+                <ul>
+                    <li><code class="code">from</code>: Alamat pemilik token</li>
+                    <li><code class="code">to</code>: Alamat tujuan</li>
+                    <li><code class="code">amount</code>: Jumlah yang akan ditransfer</li>
+                    <li><code class="code">spender</code>: Alamat spender (diverifikasi terhadap tanda tangan)</li>
+                </ul>
+            </li>
+            <li><strong>Validasi Ledger:</strong> Ledger memverifikasi:
+                <ul>
+                    <li>Spender memiliki allowance yang cukup</li>
+                    <li>Pemilik memiliki saldo yang cukup</li>
+                    <li>Transaksi ditandatangani secara kriptografis oleh spender</li>
+                </ul>
+            </li>
+            <li><strong>Pengurangan Allowance:</strong> Jumlah yang digunakan dikurangkan dari allowance</li>
+        </ol>
+        <p>Ini memungkinkan <strong>alur pembayaran otomatis</strong> di mana pengguna memberikan izin sekali, dan workflow atau pipeline dapat mengeksekusi transfer atas nama mereka tanpa memerlukan interaksi pengguna untuk setiap transaksi.</p>
+
+        <h3>5.6 Riwayat Transaksi Komprehensif</h3>
+        <p>Semua operasi token diindeks dengan indeks deret waktu ganda untuk kueri yang efisien:</p>
+        <ul>
+            <li><strong>Indeks Pengirim:</strong> <code class="code">tidx-token-from-{address}-{timestamp}-{txhash}</code></li>
+            <li><strong>Indeks Penerima:</strong> <code class="code">tidx-token-to-{address}-{timestamp}-{txhash}</code></li>
+        </ul>
+        <p>Ini memungkinkan pengambilan O(log n) dari:</p>
+        <ul>
+            <li>Semua token yang diterima oleh suatu alamat</li>
+            <li>Semua token yang dikirim dari suatu alamat</li>
+            <li>Riwayat transaksi lengkap untuk token tertentu</li>
+            <li>Peristiwa perubahan allowance (persetujuan dan pencabutan)</li>
+        </ul>
+        <p>Setiap entri riwayat mencakup:</p>
+        <ul>
+            <li>Jenis operasi (CREATE, TRANSFER, MINT, BURN, APPROVE)</li>
+            <li>Alamat dan metadata token (nama, ticker, desimal)</li>
+            <li>Alamat pengirim dan penerima</li>
+            <li>Jumlah (baik unit mikro mentah maupun yang dapat dibaca manusia)</li>
+            <li>Timestamp dan hash transaksi</li>
+        </ul>
+
+        <h3>5.7 Pembuatan Alamat Token</h3>
+        <p>Alamat token dihasilkan <strong>secara deterministik</strong> menggunakan:</p>
+        <p><code class="code">address = "0xTKN" + SHA256(creator + name + ticker + timestamp)[:18]</code></p>
+        <p>Ini memastikan:</p>
+        <ul>
+            <li>Pengidentifikasi unik global</li>
+            <li>Tidak ada tabrakan alamat</li>
+            <li>Verifikasi kriptografis asal token</li>
+        </ul>
+
+        <div class="page-break"></div>
+
+        <h3>5.8 Arsitektur Penyimpanan</h3>
+        <p>Sistem token menggunakan BadgerDB dengan ruang kunci berbasis prefiks untuk kueri yang efisien:</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Prefiks</th>
+                    <th>Tujuan</th>
+                    <th>Contoh Kunci</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code class="code">token-</code></td>
+                    <td>Metadata token</td>
+                    <td><code class="code">token-0xTKN1234...</code></td>
+                </tr>
+                <tr>
+                    <td><code class="code">token-bal-</code></td>
+                    <td>Saldo</td>
+                    <td><code class="code">token-bal-{token}-{owner}</code></td>
+                </tr>
+                <tr>
+                    <td><code class="code">token-allow-</code></td>
+                    <td>Allowance</td>
+                    <td><code class="code">token-allow-{token}-{owner}-{spender}</code></td>
+                </tr>
+                <tr>
+                    <td><code class="code">token-owner-</code></td>
+                    <td>Indeks kepemilikan</td>
+                    <td><code class="code">token-owner-{owner}-{token}</code></td>
+                </tr>
+                <tr>
+                    <td><code class="code">tidx-token-from-</code></td>
+                    <td>Riwayat pengirim</td>
+                    <td><code class="code">tidx-token-from-{addr}-{ts}-{txhash}</code></td>
+                </tr>
+                <tr>
+                    <td><code class="code">tidx-token-to-</code></td>
+                    <td>Riwayat penerima</td>
+                    <td><code class="code">tidx-token-to-{addr}-{ts}-{txhash}</code></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3>5.9 Integrasi dengan Token GCU</h3>
+        <p>Token <strong>GCU</strong> asli protokol menggunakan infrastruktur dasar yang sama dengan token kustom, memastikan konsistensi di seluruh model ekonomi. Semua operasi GCU (transfer, staking, allowance) mengikuti jalur validasi dan eksekusi yang identik.</p>
+
+        <div class="page-break"></div>
+        
+        <h2 id="s6">6. Model Ekonomi</h2>
+        <p>Ekonomi Grapthway dirancang agar berkelanjutan, adil, dan memberikan biaya yang dapat diprediksi bagi developer, menyelaraskan insentif semua peserta jaringan.</p>
+
+        <h3>6.1 Token GCU</h3>
+        <p><strong>Grapthway Compute Unit (GCU)</strong> adalah token utilitas asli dari protokol. Ini digunakan untuk semua transfer nilai dalam ekosistem:</p>
+        <ul>
+            <li><strong>Presisi:</strong> 1 GCU = 1.000.000 mikro-GCU (6 desimal)</li>
+            <li><strong>Representasi Internal:</strong> Semua perhitungan menggunakan bilangan bulat <code class="code">uint64</code> untuk memastikan hasil yang deterministik di semua node</li>
+            <li><strong>Kasus Penggunaan:</strong>
+                <ul>
+                    <li>Membayar penggunaan API dan sumber daya komputasi</li>
+                    <li>Stake untuk menjadi validator</li>
+                    <li>Membayar biaya jaringan untuk transaksi</li>
+                    <li>Menerima imbalan sebagai operator node</li>
+                </ul>
+            </li>
+        </ul>
+
+        <h3>6.2 Model Agregasi Dua Tingkat</h3>
+        <p>Protokol menggunakan model agregasi dua tingkat yang canggih untuk mencapai throughput tinggi dan biaya rendah:</p>
+
+        <h4>Tingkat 1: Agregasi Off-Chain (Biaya Penggunaan Developer)</h4>
+        <p>Ketika developer mengintegrasikan layanan mereka dengan Grapthway, setiap panggilan API ke layanan mereka memicu pengukuran otomatis:</p>
+        <ol>
+            <li>Pengguna membuat permintaan API ke <code class="code">/{dev_address}/{service}/graphql</code></li>
+            <li>Node gateway yang memproses permintaan:
+                <ul>
+                    <li>Mengeksekusi pipeline awal (auth, rate limiting, dll.)</li>
+                    <li>Memproksi permintaan ke backend developer</li>
+                    <li>Mengeksekusi pipeline akhir (transformasi data, penagihan, dll.)</li>
+                </ul>
+            </li>
+            <li>Node mengakumulasi metrik penggunaan di memori:
+                <ul>
+                    <li>Akun developer didebit (dikenakan biaya untuk komputasi)</li>
+                    <li>Akun operator node dikreditkan (imbalan untuk eksekusi)</li>
+                </ul>
+            </li>
+            <li>Setiap 10.000 operasi teragregasi, node mengirimkan satu <code class="code">BatchAggregationTransaction</code> ke blockchain yang berisi:
+                <ul>
+                    <li><code class="code">Debits: {"dev_address": 50000}</code> (total biaya)</li>
+                    <li><code class="code">Rewards: {"node_address": 40000}</code> (80% ke operator)</li>
+                    <li><code class="code">NetworkFee: 10000</code> (20% ke jaringan)</li>
+                    <li><code class="code">AggregatedTxIDs: [...]</code> (bukti operasi yang disertakan)</li>
+                </ul>
+            </li>
+        </ol>
+        <p><strong>Pembagian Ekonomi:</strong></p>
+        <ul>
+            <li><strong>80%</strong> didistribusikan ke operator node yang memproses permintaan</li>
+            <li><strong>20%</strong> dialokasikan untuk biaya jaringan (dibakar atau didistribusikan kembali ke validator)</li>
+        </ul>
+
+        <h4>Tingkat 2: Pemrosesan Batch On-Chain</h4>
+        <p>Ketika pemimpin membuat blok, ia memproses entri <code class="code">BatchAggregationTransaction</code> dan memperbarui saldo akun dalam satu operasi atomik. Ini mengurangi overhead on-chain dari jutaan transaksi individu menjadi ratusan entri batch per blok.</p>
+
+        <h3>6.3 Persyaratan Stake & Validasi</h3>
+        <p>Operator Node diharuskan untuk melakukan stake GCU, yang berfungsi sebagai jaminan keamanan. Jumlah stake yang dibutuhkan sebanding dengan sumber daya perangkat keras (khususnya inti CPU) yang dialokasikan node ke jaringan:</p>
+        <p><strong>Formula:</strong></p>
+        <p><code class="code">Stake yang Dibutuhkan = Inti CPU × 100 GCU</code></p>
+        <p><strong>Contoh:</strong></p>
+        <ul>
+            <li>Node 2 vCPU: 200 GCU stake minimum</li>
+            <li>Node 8 vCPU: 800 GCU stake minimum</li>
+            <li>Node 64 vCPU: 6.400 GCU stake minimum</li>
+        </ul>
+
+        <p><strong>Siklus Hidup Stake:</strong></p>
+        <ol>
+            <li><strong>Deposit:</strong> <code class="code">StakeDepositTransaction</code> memindahkan GCU dari saldo yang dapat dibelanjakan ke pool stake</li>
+            <li><strong>Tetapkan (Assign):</strong> <code class="code">StakeAssignTransaction</code> mengalokasikan stake ke ID peer node tertentu</li>
+            <li><strong>Lepaskan (Unassign):</strong> <code class="code">StakeUnassignTransaction</code> menghapus stake dari node dan memulai periode unbonding</li>
+            <li><strong>Penarikan:</strong> Setelah periode unbonding 24 jam, <code class="code">StakeWithdrawalTransaction</code> mengembalikan GCU ke saldo yang dapat dibelanjakan</li>
+        </ol>
+        <p>Stake seorang operator node terikat pada <strong>Dompet Pemilik</strong> permanen mereka, bukan kunci operasional sementara node (Peer ID). Ini memungkinkan operator untuk merotasi infrastruktur node tanpa kehilangan kelayakan validator.</p>
+
+        <h3>6.4 Jabat Tangan Validasi Peer</h3>
+        <p>Jabat tangan P2P protokol adalah proses pemeriksaan yang ketat di mana peer yang sudah mapan memverifikasi klaim perangkat keras node baru dan total stake yang dialokasikan terhadap ledger:</p>
+        <ol>
+            <li>Node baru terhubung dan menyajikan:
+                <ul>
+                    <li>Peer ID (berasal dari kunci operasional)</li>
+                    <li>Alamat dompet pemilik</li>
+                    <li>Klaim inti CPU</li>
+                    <li>Tanda tangan kriptografis yang menghubungkan ID peer ke dompet pemilik</li>
+                </ul>
+            </li>
+            <li>Peer yang ada menanyakan ledger untuk:
+                <ul>
+                    <li>Total stake yang dialokasikan ke ID peer ini</li>
+                    <li>Stake yang dibutuhkan berdasarkan klaim perangkat keras</li>
+                </ul>
+            </li>
+            <li>Jika <code class="code">stake_aktual < stake_yang_dibutuhkan</code>, koneksi ditolak</li>
+            <li>Jika valid, node ditambahkan ke daftar peer dan memenuhi syarat untuk pemilihan validator</li>
+        </ol>
+        <p>Jabat tangan yang diamankan secara kriptografis ini memastikan semua node yang berpartisipasi terikat secara ekonomi pada aturan jaringan.</p>
+
+        <h3>6.5 Kotak Penalti Developer</h3>
+        <p>Untuk mencegah penyalahgunaan jaringan, protokol mengimplementasikan <code class="code">DeveloperPenaltyBox</code>. Jika saldo akun developer tidak mencukupi untuk menutupi biaya penggunaan API agregat mereka, mereka untuk sementara ditempatkan di kotak penalti ini dan diblokir dari membuat permintaan lebih lanjut sampai saldo mereka diisi ulang.</p>
+        <p>Ini memberikan pengaman ekonomi waktu nyata yang praktis untuk jaringan tanpa memerlukan deposit di muka atau mekanisme escrow yang kompleks.</p>
+        
+        <div class="page-break"></div>
+
+        <h2 id="s7">7. Kinerja & Skalabilitas</h2>
+        
+        <h3>7.1 Tolok Ukur Terukur</h3>
+        <p>Grapthway bukanlah konsep teoretis; ini adalah jaringan yang hidup dan teruji. Dalam uji beban pada cluster 3-node yang sederhana, dengan setiap node hanya dialokasikan <strong>2 vCPU dan 2GB RAM</strong>, ledger Grapthway secara konsisten memproses lebih dari:</p>
+        <ul>
+            <li><strong>~500 TPS</strong> (transaksi transfer token per detik)</li>
+            <li><strong>~1000 OPS</strong> (operasi logis per detik, termasuk debit dan imbalan)</li>
+            <li><strong>~500 OPS per inti CPU</strong></li>
+        </ul>
+
+        <h3>7.2 Karakteristik Skalabilitas</h3>
+        <p><strong>Skalabilitas Vertikal (Kinerja Per Node):</strong></p>
+        <ul>
+            <li>Kinerja meningkat hampir linear dengan inti CPU</li>
+            <li>Node 64-inti: Peningkatan teoretis 32x (potensi 16.000+ TPS)</li>
+            <li>Dibatasi oleh latensi jaringan, bukan CPU</li>
+        </ul>
+        <p><strong>Skalabilitas Horizontal (Ukuran Jaringan):</strong></p>
+        <ul>
+            <li>Protokol GossipSub menyebarkan status secara efisien ke ratusan node</li>
+            <li>Siaran blok terpotong (shredded) (potongan 4KB) mengurangi persyaratan bandwidth</li>
+            <li>Aliran libp2p langsung untuk konsensus meminimalkan overhead siaran</li>
+        </ul>
+
+        <h3>7.3 Teknik Optimasi</h3>
+        <ul>
+            <li><strong>Sharding Mempool:</strong> 4096 shard memungkinkan akses bersamaan bebas kunci (lock-free)</li>
+            <li><strong>Sharding Kunci Akun:</strong> Kunci per alamat mencegah pertentangan global</li>
+            <li><strong>Cache Status Akun Langsung:</strong> sync.Map dalam memori untuk akun panas</li>
+            <li><strong>Penugasan Nonce Paralel:</strong> Pool pekerja menugaskan nonce secara bersamaan</li>
+            <li><strong>Agregasi Transaksi Batch:</strong> Mengurangi jejak on-chain sebesar 100x</li>
+            <li><strong>Tuning BadgerDB:</strong> Compactor dinamis diskalakan dengan jumlah CPU</li>
+            <li><strong>Pemantauan Sadar-Cgroup:</strong> Pengukuran sumber daya yang akurat dalam kontainer</li>
+        </ul>
+
+        <div class="page-break"></div>
+        
+        <h2 id="s8">8. Model Keamanan</h2>
+        
+        <h3>8.1 Fondasi Kriptografis</h3>
+        <ul>
+            <li><strong>Skema Tanda Tangan:</strong> ECDSA dengan kurva secp256k1 (sama seperti Bitcoin/Ethereum)</li>
+            <li><strong>Fungsi Hash:</strong> SHA-256 untuk semua operasi kriptografis</li>
+            <li><strong>Penurunan Kunci:</strong> Pembuatan alamat deterministik dari kunci publik</li>
+            <li><strong>Otentikasi Pesan:</strong> Semua pesan P2P menyertakan tanda tangan HMAC</li>
+        </ul>
+
+        <h3>8.2 Validasi Transaksi</h3>
+        <p>Setiap transaksi menjalani validasi berlapis-lapis:</p>
+        <ol>
+            <li><strong>Verifikasi Kriptografis:</strong>
+                <ul>
+                    <li>Tanda tangan cocok dengan kunci publik pengirim</li>
+                    <li>ID Transaksi diturunkan dengan benar dari konten</li>
+                </ul>
+            </li>
+            <li><strong>Validasi Nonce:</strong>
+                <ul>
+                    <li>Untuk transaksi pengguna: <code class="code">tx.nonce == account.nonce + 1</code></li>
+                    <li>Mencegah serangan replay</li>
+                    <li>Memastikan urutan total operasi</li>
+                </ul>
+            </li>
+            <li><strong>Validasi Saldo:</strong>
+                <ul>
+                    <li>Pengirim memiliki dana yang cukup (termasuk operasi yang tertunda)</li>
+                    <li>Untuk transfer delegasi: spender memiliki allowance yang cukup</li>
+                </ul>
+            </li>
+            <li><strong>Validasi Timestamp:</strong>
+                <ul>
+                    <li>Transaksi berusia kurang dari 60 detik</li>
+                    <li>Mencegah mempool membengkak dari transaksi basi</li>
+                </ul>
+            </li>
+            <li><strong>Simulasi Status:</strong>
+                <ul>
+                    <li>Pemimpin blok mensimulasikan eksekusi sebelum finalisasi</li>
+                    <li>Menyaring transaksi yang akan gagal</li>
+                </ul>
+            </li>
+        </ol>
+
+        <h3>8.3 Byzantine Fault Tolerance</h3>
+        <p>Mekanisme konsensus menjamin keamanan di bawah asumsi berikut:</p>
+        <ul>
+            <li><strong>Supermayoritas Jujur:</strong> Setidaknya ⅔ + 1 validator jujur</li>
+            <li><strong>Jaringan Sinkron:</strong> Pesan dikirimkan dalam waktu terbatas (2.5d)</li>
+            <li><strong>Status Deterministik:</strong> Semua node jujur menghitung transisi status yang identik</li>
+        </ul>
+        <p><strong>Ketahanan Serangan:</strong></p>
+        <ul>
+            <li><strong>Double Spend:</strong> Tidak mungkin karena pengurutan berbasis nonce dan blok pemimpin tunggal</li>
+            <li><strong>Serangan Jangka Panjang:</strong> Dimigrasi oleh checkpointing dan konsensus sosial pada genesis</li>
+            <li><strong>Serangan Sybil:</strong> Dicegah oleh persyaratan stake yang sebanding dengan perangkat keras</li>
+            <li><strong>Serangan Spam:</strong> Diperlambat oleh kedaluwarsa transaksi dan batasan mempool</li>
+        </ul>
+
+        <h3>8.4 Stake Slashing (Peningkatan di Masa Depan)</h3>
+        <p>Meskipun saat ini belum diimplementasikan, arsitektur mendukung stake slashing di masa depan untuk perilaku Byzantine:</p>
+        <ul>
+            <li>Pemimpin mengusulkan blok yang tidak valid → Kehilangan X% dari stake</li>
+            <li>Validator menandatangani blok yang bertentangan → Kehilangan Y% dari stake</li>
+            <li>Node secara konsisten offline → Periode unbonding diperpanjang</li>
+        </ul>
+
+        <div class="page-break"></div>
+
+        <h2 id="s9">9. Perbandingan dengan Platform yang Ada</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Fitur</th>
+                    <th>Grapthway</th>
+                    <th>AWS/GCP</th>
+                    <th>Ethereum</th>
+                    <th>Solana</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Arsitektur</strong></td>
+                    <td style="background:#d4edda;">L1 Hibrida + Off-Chain</td>
+                    <td>Server Terpusat</td>
+                    <td>Blockchain Monolitik</td>
+                    <td>Blockchain Monolitik</td>
+                </tr>
+                <tr>
+                    <td><strong>TPS</strong></td>
+                    <td style="background:#d4edda;">500+ (2 vCPU)</td>
+                    <td style="background:#d4edda;">Tidak Terbatas</td>
+                    <td style="background:#f8d7da;">~15</td>
+                    <td style="background:#fff3cd;">~65.000 teoretis</td>
+                </tr>
+                <tr>
+                    <td><strong>Waktu Finalitas</strong></td>
+                    <td style="background:#d4edda;">2.5 detik</td>
+                    <td style="background:#d4edda;">Instan</td>
+                    <td style="background:#f8d7da;">~13 menit</td>
+                    <td style="background:#fff3cd;">~400ms</td>
+                </tr>
+                <tr>
+                    <td><strong>Pengalaman Developer</strong></td>
+                    <td style="background:#d4edda;">Gunakan bahasa/stack apa pun</td>
+                    <td style="background:#d4edda;">Luar Biasa</td>
+                    <td style="background:#f8d7da;">Buruk (Hanya Solidity)</td>
+                    <td style="background:#f8d7da;">Buruk (Hanya Rust)</td>
+                </tr>
+                <tr>
+                    <td><strong>Smart Contract</strong></td>
+                    <td style="background:#d4edda;">Off-chain (Pipelines/Workflows)</td>
+                    <td>N/A</td>
+                    <td style="background:#f8d7da;">On-chain (EVM)</td>
+                    <td style="background:#f8d7da;">On-chain (BPF)</td>
+                </tr>
+                <tr>
+                    <td><strong>Model Biaya</strong></td>
+                    <td style="background:#d4edda;">Dapat Diprediksi (GCU tetap)</td>
+                    <td style="background:#fff3cd;">Variabel (berbasis penggunaan)</td>
+                    <td style="background:#f8d7da;">Volatil (pasar gas)</td>
+                    <td style="background:#f8d7da;">Volatil (biaya prioritas)</td>
+                </tr>
+                <tr>
+                    <td><strong>Kedaulatan</strong></td>
+                    <td style="background:#d4edda;">Tinggi (Milik Protokol)</td>
+                    <td style="background:#f8d7da;">Rendah (Milik Platform)</td>
+                    <td style="background:#d4edda;">Tinggi (Milik Protokol)</td>
+                    <td style="background:#d4edda;">Tinggi (Milik Protokol)</td>
+                </tr>
+                <tr>
+                    <td><strong>Ketahanan Sensor</strong></td>
+                    <td style="background:#d4edda;">Tinggi (P2P)</td>
+                    <td style="background:#f8d7da;">Rendah (Kontrol Terpusat)</td>
+                    <td style="background:#d4edda;">Tinggi (Terdesentralisasi)</td>
+                    <td style="background:#fff3cd;">Sedang (Konsentrasi Validator)</td>
+                </tr>
+                <tr>
+                    <td><strong>Token Asli</strong></td>
+                    <td style="background:#d4edda;">Bawaan (tanpa penerapan)</td>
+                    <td>N/A</td>
+                    <td style="background:#f8d7da;">Perlu smart contract</td>
+                    <td style="background:#f8d7da;">Perlu smart contract</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="page-break"></div>
+        
+        <h2 id="s10">10. Kasus Penggunaan</h2>
+
+        <h3>10.1 Pasar API Terdesentralisasi</h3>
+        <p>Developer mendaftarkan API REST/GraphQL dengan pengukuran, otentikasi, dan pengumpulan pembayaran otomatis. Pengguna membayar per permintaan dalam GCU atau token kustom.</p>
+
+        <h3>10.2 Orkestrasi Lintas-Layanan</h3>
+        <p>Membangun workflow kompleks yang mengoordinasikan beberapa layanan independen (pemrosesan pembayaran, inferensi AI, penyimpanan data) dengan rollback otomatis saat gagal.</p>
+
+        <h3>10.3 Konten Terbatas Token (Token-Gated)</h3>
+        <p>Mengharuskan pengguna untuk memiliki saldo minimum token tertentu sebelum memberikan akses API. Berguna untuk platform keanggotaan, konten premium, atau tata kelola DAO.</p>
+
+        <h3>10.4 Keuangan Terdesentralisasi (DeFi)</h3>
+        <p>Membuat token kustom dengan mekanisme burn/mint yang dapat dikonfigurasi, mengimplementasikan bot perdagangan otomatis menggunakan allowance, atau membangun protokol peminjaman dengan likuidasi berbasis workflow.</p>
+
+        <h3>10.5 Pelacakan Rantai Pasokan</h3>
+        <p>Menggunakan token RWA untuk merepresentasikan barang fisik, dengan workflow melacak transfer kustodi dan asal barang melalui berbagai pihak.</p>
+
+        <h3>10.6 Jaringan Sosial Terdesentralisasi</h3>
+        <p>Grafik konten milik pengguna dengan transaksi mikro otomatis untuk suka, bagikan, dan fitur premium, semuanya diukur oleh protokol.</p>
+        
+        <h3>10.7 Ekonomi Agen AI Otonom</h3>
+        <p>Menciptakan ekosistem agen AI yang dapat bertindak atas nama pengguna dan membayar layanan secara instan. Pengguna memberikan 'allowance' GCU kepada agen. Agen tersebut kemudian dapat memanggil layanan lain di jaringan, dan Mesin Pipeline Grapthway menggunakan Transaksi Delegasi untuk menangani pembayaran mikro secara otomatis dan aman dari allowance pengguna, tanpa memerlukan tanda tangan pengguna untuk setiap tindakan.</p>
+
+        <h2 id="s11">11. Peta Jalan (Roadmap)</h2>
+        
+        <h3>Fase 1 (v1.0): Infrastruktur Inti</h3>
+        <ul>
+            <li>✅ Konsensus DPoS dengan pemilihan pemimpin deterministik</li>
+            <li>✅ Pemrosesan transaksi paralel (4096 shard)</li>
+            <li>✅ Sistem token dengan mekanisme burn/mint</li>
+            <li>✅ Transfer delegasi berbasis allowance</li>
+            <li>✅ Workflow tahan lama dengan failover otomatis</li>
+            <li>✅ Federasi GraphQL dan penggabungan skema</li>
+        </ul>
+
+        <h3>Fase 1.5 (v2.0, Dirilis): Penguatan Protokol &amp; Koreksi Pipeline</h3>
+        <ul>
+            <li>✅ <strong>Perbaikan assign propagation</strong> — konteks pipeline REST non-durable kini diteruskan dengan benar ke <code>executeRESTRequest</code></li>
+            <li>✅ <strong>Perbaikan ErrMissingBatchTxs</strong> — jendela polling cache pre-proposal dinamis (200–600ms), fallback ke validator lain, dan protokol P2P baru <code>/grapthway/push-txs/1.0.0</code> untuk pengiriman tx yang terkonfirmasi</li>
+            <li>✅ <strong>Perbaikan tingkat fallback blok</strong> — lima pool worker gossip independen (<code>GOMAXPROCS×16</code>) untuk block shreds, pre-proposals, transaksi, pre-validated txs, dan pesan kontrol; menghilangkan stagnasi saluran pre-proposal</li>
+            <li>✅ <strong>Perbaikan goroutine tak terbatas</strong> — pool worker <code>GOMAXPROCS×16</code> di <code>SynchronizeMempool</code>, <code>RequestMissingTx</code>, <code>RequestChainTipQuorum</code>, <code>GetLiveAccountStatesBatch</code>, dan <code>ensureTransactionPropagation</code></li>
+            <li>✅ <strong>Penulisan token batch paralel</strong> — enam bagian tulis independen di <code>ApplyTokenBatchToWriteBatch</code> berjalan bersamaan di bawah <code>sync.WaitGroup</code></li>
+            <li>✅ <strong>Perbaikan ProposalID</strong> — <code>ProposalID</code> dipetakan di konverter proto-to-model blok; menghilangkan pencarian kunci cache yang selalu kosong</li>
+            <li>✅ <strong>Pembersihan propagation yang ditangguhkan</strong> — status propagasi tx dibersihkan di blok-1 dengan deduplikasi atomik via <code>LoadOrStore</code></li>
+            <li>✅ <strong>ID transaksi deterministik</strong> — <code>GenerateTxID</code> berbasis SHA-256 menggantikan penggabungan string sederhana di semua situs transaksi</li>
+            <li>✅ <strong>Interpolasi path dinamis</strong> — variabel <code>$request.body.field</code>, <code>$args.field</code>, <code>$field</code> diselesaikan di path REST step saat runtime</li>
+            <li>✅ <strong>Perbaikan konteks query param GET</strong> — <code>pipelineContext</code> tidak lagi dideklarasikan ulang sebagai map kosong di dalam <code>executeRESTRequest</code></li>
+            <li>✅ <strong>Konteks pipeline tersedia di semua transport</strong> — <code>args</code> dan <code>request.body</code> tersedia untuk interpolasi <code>$</code> di entry point REST, WebSocket, dan GraphQL</li>
+            <li>✅ <strong>Perbaikan dot-path assign workflow durable</strong> — rantai resolusi tiga prioritas cocok dengan perilaku non-durable untuk traversal path bertingkat</li>
+            <li>✅ <strong>Deteksi mutasi GraphQL diperluas</strong> — <code>insert</code>, <code>upsert</code>, <code>remove</code> ditambahkan; <code>step.Method = "mutation"</code> dihormati sebagai override eksplisit</li>
+            <li>✅ <strong>Alamat developer dinamis di service key</strong> — variabel <code>$-prefix</code> di bagian alamat developer kunci komposit diselesaikan dari konteks pipeline</li>
+            <li>✅ <strong>Dukungan metode PATCH</strong> — ditambahkan ke metode REST yang diizinkan</li>
+            <li>✅ <strong>Pencocokan rute &amp; pipeline yang ditingkatkan</strong> — segmen wildcard <code>:param</code> dan pencocokan prioritas tiga tahap (<code>matchRoutePattern</code>, <code>matchPipeline</code>)</li>
+            <li>✅ <strong>Kompatibilitas upgrade WebSocket</strong> — <code>wsPipelinedProxy</code> menjalankan pre-pipeline pada koneksi WS; <code>?token</code> dipromosikan ke <code>Authorization</code>; <code>LoggingResponseWriter</code> mendapatkan <code>Hijack()</code></li>
+            <li>✅ <strong>Step workflow durable dirutekan melalui gateway</strong> — pre-pipeline auth dan billing kini berjalan untuk step REST dan GraphQL di dalam workflow durable; helper <code>pickGatewayInstance()</code> digunakan bersama di semua call site</li>
+            <li>✅ <strong>SDK Go resmi</strong> — failover multi-node, routing berbasis latensi, manajemen akun thread-safe, middleware</li>
+            <li>✅ <strong>SDK JavaScript/TypeScript resmi</strong> — Zustand account store, failover multi-node, middleware Express</li>
+        </ul>
+
+        <h3>Fase 2 (Q1 2026): Keamanan yang Ditingkatkan</h3>
+        <ul>
+            <li>🔲 Stake slashing untuk perilaku Byzantine</li>
+            <li>🔲 Zero-knowledge proof untuk transaksi pribadi</li>
+            <li>🔲 Dukungan dompet multi-tanda tangan</li>
+        </ul>
+
+        <h3>Fase 3 (Q4 2026): Peralatan Developer</h3>
+        <ul>
+            <li>✅ SDK JavaScript/TypeScript (dirilis di v2.0)</li>
+            <li>✅ SDK Go (dirilis di v2.0)</li>
+            <li>🔲 IDE berbasis browser untuk pengembangan workflow</li>
+            <li>🔲 SDK untuk Python dan Rust</li>
+            <li>🔲 Kerangka kerja pengujian dengan simulasi jaringan lokal</li>
+            <li>🔲 Dasbor analitik untuk metrik penggunaan API</li>
+        </ul>
+
+        <h3>Fase 4 (Q3 2027): Ekspansi Ekosistem</h3>
+        <ul>
+            <li>🔲 Jembatan lintas-rantai (Cross-chain) ke Ethereum dan Solana</li>
+            <li>🔲 Integrasi penyimpanan terdesentralisasi (IPFS/Arweave)</li>
+            <li>🔲 Dompet seluler dengan otentikasi biometrik</li>
+            <li>🔲 Mekanisme tata kelola untuk pembaruan protokol</li>
+        </ul>
+
+        <div class="page-break"></div>
+    
+        <h2 id="s12">12. Kesimpulan</h2>
+        <p>Protokol Grapthway mewakili pemikiran ulang fundamental tentang apa itu infrastruktur blockchain. Dengan memisahkan penyelesaian ekonomi dari eksekusi aplikasi, ia mencapai cawan suci sistem terdesentralisasi: <strong>kinerja Web2 dengan kedaulatan Web3</strong>.</p>
+
+        <p>Blockchain tradisional memaksa developer untuk membangun kembali seluruh tumpukan aplikasi mereka agar sesuai dengan batasan satu mesin virtual. Grapthway membalik model ini—developer mempertahankan infrastruktur mereka yang ada dan hanya membungkusnya dengan lapisan orkestrasi terdesentralisasi.</p>
+
+        <p><strong>Inovasi Utama:</strong></p>
+        <ul>
+            <li>L1 yang dibuat khusus dan dioptimalkan untuk penyelesaian, bukan eksekusi</li>
+            <li>Pipeline dan workflow off-chain untuk logika bisnis yang kompleks</li>
+            <li>Sistem token asli dengan mekanisme ekonomi yang dapat dikonfigurasi</li>
+            <li>Konsensus deterministik yang kebal terhadap serangan partisi jaringan</li>
+            <li>Skalabilitas vertikal dengan peningkatan kinerja yang hampir linear</li>
+        </ul>
+
+        <p>Saat internet bertransisi dari infrastruktur milik platform ke infrastruktur milik protokol, Grapthway menyediakan jembatan yang hilang. Ini adalah protokol untuk developer yang menolak untuk berkompromi—yang menginginkan kebebasan Web3 tanpa mengorbankan kinerja Web2.</p>
+
+        <p><strong>Masa depan internet bukanlah platform terpusat. Bukan blockchain yang lambat. Ini berdaulat, skalabel, dan dibangun di atas protokol seperti Grapthway.</strong></p>
+        
+        <div class="footer">
+            <p>Protokol Eksekusi Berdaulat Grapthway v1.1 | 23 Oktober 2025</p>
+        </div>
+    </div>
+</body>
+</html>

@@ -527,7 +527,7 @@ func main() {
 	// Apply CORS middleware
 	corsOpts := handlers.CORS(
 		handlers.AllowedOrigins([]string{"*"}),
-		handlers.AllowedMethods([]string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}),
+		handlers.AllowedMethods([]string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}),
 		handlers.AllowedHeaders([]string{"Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin", "Upgrade", "X-Grapthway-Developer-ID", "X-Grapthway-Admin-Address", "X-Grapthway-Admin-Signature", "X-Grapthway-User-Address", "X-Grapthway-User-PublicKey", "X-Grapthway-User-Signature", "Idempotency-Key"}),
 		handlers.AllowCredentials(),
 	)

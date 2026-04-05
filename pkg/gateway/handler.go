@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/rand"
@@ -10,6 +11,7 @@ import (
 	"io"
 	"log"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -28,9 +30,12 @@ import (
 
 	json "github.com/json-iterator/go"
 
+	"github.com/gorilla/websocket"
 	"github.com/graphql-go/graphql/language/ast"
 	"github.com/graphql-go/graphql/language/parser"
 )
+
+// ─── GatewayHandler (GraphQL middleware) ─────────────────────────────────────
 
 type GatewayHandler struct {
 	storage  model.Storage
@@ -39,8 +44,6 @@ type GatewayHandler struct {
 	executor *pipeline.PipelineExecutor
 }
 
-// --- FIX START ---
-// Update the constructor to accept the workflow engine instance instead of creating a new one.
 func NewGatewayHandler(storage model.Storage, logger *logging.Logger, router *router.ServiceRouter, merger *schema.Merger, wfEngine pipeline.DurableWorkflowStarter) *GatewayHandler {
 	return &GatewayHandler{
 		storage:  storage,
@@ -49,8 +52,6 @@ func NewGatewayHandler(storage model.Storage, logger *logging.Logger, router *ro
 		executor: pipeline.NewPipelineExecutor(storage, router, logger, merger, wfEngine),
 	}
 }
-
-// --- FIX END ---
 
 func (h *GatewayHandler) ExecutePostPipeline(pipeline *model.PipelineConfig, mainResolverResponse map[string]interface{}, originalContext context.Context) (map[string]interface{}, error) {
 	return h.executor.ExecutePostPipeline(pipeline, mainResolverResponse, originalContext)
@@ -94,7 +95,7 @@ func (h *GatewayHandler) Middleware(next http.Handler) http.Handler {
 			walletAddress = pathParts[0]
 			subgraphName = strings.Join(pathParts[1:len(pathParts)-1], "/")
 			logEntry.Subgraph = subgraphName
-			logEntry.User = walletAddress // Route owner
+			logEntry.User = walletAddress
 		} else if len(pathParts) == 1 && pathParts[0] == "graphql" {
 			logEntry.Subgraph = "main"
 			subgraphName = "main"
@@ -106,6 +107,9 @@ func (h *GatewayHandler) Middleware(next http.Handler) http.Handler {
 		}
 		var bodyBytes []byte
 
+		// For GraphQL middleware we only need to parse GET and POST bodies.
+		// Other HTTP methods (PATCH, PUT, DELETE, etc.) are REST requests routed
+		// through RestProxyHandler and never reach this middleware as GraphQL.
 		if r.Method == "GET" {
 			query := r.URL.Query()
 			requestBody.Query = query.Get("query")
@@ -133,6 +137,11 @@ func (h *GatewayHandler) Middleware(next http.Handler) http.Handler {
 					return
 				}
 			}
+		} else {
+			// For non-GET/POST methods reaching the GraphQL middleware, read the
+			// body for logging but do not attempt GraphQL parsing.
+			bodyBytes, _ = io.ReadAll(r.Body)
+			r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 		}
 
 		logEntry.ClientRequest = logging.RequestDetails{
@@ -167,12 +176,10 @@ func (h *GatewayHandler) Middleware(next http.Handler) http.Handler {
 		ctx = context.WithValue(ctx, "waitgroup", &wg)
 		ctx = context.WithValue(ctx, "wallet_address", walletAddress)
 
-		// Add routeOwner to context (for ledger operations and logging)
 		if walletAddress != "" {
 			ctx = context.WithValue(ctx, "routeOwner", walletAddress)
 		}
 
-		// FIX: Resolve the actual service developer who owns this subgraph
 		var serviceDeveloperAddress string
 		if subgraphName != "" {
 			allServices, servicesErr := h.storage.GetAllServices()
@@ -190,19 +197,22 @@ func (h *GatewayHandler) Middleware(next http.Handler) http.Handler {
 			}
 		}
 
-		// Add serviceDeveloper to context for middleware/workflow lookups and billing
 		if serviceDeveloperAddress != "" {
 			ctx = context.WithValue(ctx, "serviceDeveloper", serviceDeveloperAddress)
 		}
 
 		var pipelineResult *model.ExecutionResult
 		if len(requestedFields) > 0 && serviceDeveloperAddress != "" {
-			// Use serviceDeveloper address for middleware lookup
 			pipelineConfig, _ := h.storage.GetMiddlewarePipeline(serviceDeveloperAddress, requestedFields[0])
 
 			if pipelineConfig != nil {
 				initialCtxData := map[string]interface{}{
+					// GraphQL variables exposed as "args" for $args.field path interpolation
 					"args": requestBody.Variables,
+					// Also expose variables under request.body for $request.body.field interpolation
+					"request": map[string]interface{}{
+						"body": requestBody.Variables,
+					},
 				}
 
 				pipelineResult, err = h.executor.ExecutePrePipeline(pipelineConfig, ctx, initialCtxData)
@@ -239,6 +249,8 @@ func (h *GatewayHandler) extractRequestedFields(query string) ([]string, error) 
 	}
 	return fields, nil
 }
+
+// ─── LoggingResponseWriter ────────────────────────────────────────────────────
 
 type LoggingResponseWriter struct {
 	http.ResponseWriter
@@ -282,6 +294,19 @@ func MultipartMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// Hijack lets httputil.ReverseProxy tunnel a WebSocket connection through the
+// LoggingResponseWriter wrapper. Without this, the reverse proxy cannot obtain
+// the raw TCP conn and the WebSocket handshake fails.
+func (lrw *LoggingResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := lrw.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("underlying ResponseWriter does not support hijacking")
+	}
+	return hijacker.Hijack()
+}
+
+// ─── RestProxyHandler ─────────────────────────────────────────────────────────
+
 type RestProxyHandler struct {
 	storage      model.Storage
 	logger       *logging.Logger
@@ -290,8 +315,6 @@ type RestProxyHandler struct {
 	nodeIdentity *crypto.Identity
 }
 
-// --- FIX START ---
-// Update the constructor to accept the workflow engine instance instead of creating a new one.
 func NewRestProxyHandler(storage model.Storage, logger *logging.Logger, router *router.ServiceRouter, merger *schema.Merger, wfEngine pipeline.DurableWorkflowStarter, nodeIdentity *crypto.Identity) *RestProxyHandler {
 	return &RestProxyHandler{
 		storage:      storage,
@@ -302,7 +325,121 @@ func NewRestProxyHandler(storage model.Storage, logger *logging.Logger, router *
 	}
 }
 
-// --- FIX END ---
+// ─── matchRoutePattern ────────────────────────────────────────────────────────
+//
+// Returns true when actualPath matches patternPath where any segment in
+// patternPath that starts with ':' is treated as a wildcard.
+//
+// Examples:
+//
+//	matchRoutePattern("/product-service/api/admin/tiers/abc-123",
+//	                  "/product-service/api/admin/tiers/:tier_id")  → true
+//
+//	matchRoutePattern("/product-service/api/admin/tiers",
+//	                  "/product-service/api/admin/tiers/:tier_id")  → false  (segment count differs)
+//
+//	matchRoutePattern("/product-service/api/tiers",
+//	                  "/product-service/api/tiers")                 → true   (exact)
+func matchRoutePattern(actualPath, patternPath string) bool {
+	// Fast path: exact match (covers routes without params).
+	if actualPath == patternPath {
+		return true
+	}
+
+	actualSegs := strings.Split(strings.Trim(actualPath, "/"), "/")
+	patternSegs := strings.Split(strings.Trim(patternPath, "/"), "/")
+
+	if len(actualSegs) != len(patternSegs) {
+		return false
+	}
+
+	for i, pat := range patternSegs {
+		if strings.HasPrefix(pat, ":") {
+			// Wildcard segment — matches any non-empty value.
+			if actualSegs[i] == "" {
+				return false
+			}
+			continue
+		}
+		if pat != actualSegs[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// ─── matchPipeline ────────────────────────────────────────────────────────────
+//
+// Finds the best-matching pipeline for (method, path) from the registered map.
+//
+// Match priority (highest to lowest):
+//  1. Exact match:      "PATCH /foo/bar/abc"  == key "PATCH /foo/bar/abc"
+//  2. Param match:      "PATCH /foo/bar/abc"  matches key "PATCH /foo/bar/:id"
+//  3. Prefix match:     "GET /foo/bar/abc"    HasPrefix of key "GET /foo/bar"
+//     (retained for backward compat with wildcard-suffix registrations)
+//
+// The longest matching pattern wins in cases 2 and 3 to prevent a short prefix
+// from shadowing a more specific parameterised route.
+func matchPipeline(method, requestPath string, restPipelines model.RestPipelineMap) *model.PipelineConfig {
+	cleanPath := strings.Split(requestPath, "?")[0]
+
+	// ── Pass 1: exact match (no query string) ────────────────────────────────
+	for _, candidate := range []string{
+		method + " " + requestPath,
+		method + " " + cleanPath,
+	} {
+		if p, ok := restPipelines[candidate]; ok {
+			log.Printf("REST: Matched pipeline (exact) for route: %s", candidate)
+			return p
+		}
+	}
+
+	// ── Pass 2: param-pattern match ──────────────────────────────────────────
+	// Walk every registered key; keep the one whose pattern is longest
+	// (most specific) among all matches.
+	var bestParam *model.PipelineConfig
+	bestParamLen := -1
+
+	for routeKey, p := range restPipelines {
+		parts := strings.SplitN(routeKey, " ", 2)
+		if len(parts) != 2 || parts[0] != method {
+			continue
+		}
+		pattern := parts[1]
+		if matchRoutePattern(cleanPath, pattern) {
+			if len(pattern) > bestParamLen {
+				bestParamLen = len(pattern)
+				cp := p // copy before taking address
+				bestParam = cp
+				log.Printf("REST: Matched pipeline (param-pattern) for route: %s", routeKey)
+			}
+		}
+	}
+	if bestParam != nil {
+		return bestParam
+	}
+
+	// ── Pass 3: prefix match (legacy fallback) ───────────────────────────────
+	// Kept so that registrations like "GET /api" still catch "GET /api/any/sub"
+	// when no more-specific rule is registered.
+	var bestPrefix *model.PipelineConfig
+	bestPrefixLen := -1
+
+	for routeKey, p := range restPipelines {
+		parts := strings.SplitN(routeKey, " ", 2)
+		if len(parts) != 2 || parts[0] != method {
+			continue
+		}
+		prefix := parts[1]
+		if strings.HasPrefix(cleanPath, prefix) && len(prefix) > bestPrefixLen {
+			bestPrefixLen = len(prefix)
+			cp := p
+			bestPrefix = cp
+			log.Printf("REST: Matched pipeline (prefix) for route: %s", routeKey)
+		}
+	}
+	return bestPrefix
+}
 
 func (h *RestProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	allServices, err := h.storage.GetAllServices()
@@ -317,23 +454,19 @@ func (h *RestProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var matchedPipeline *model.PipelineConfig
 	var longestMatch string
 
-	// IMPROVED PATH PARSING
 	fullPath := strings.Trim(r.URL.Path, "/")
 	pathParts := strings.Split(fullPath, "/")
 
 	var walletAddress, requestPath string
 
-	// Check if first segment is a wallet address
 	if len(pathParts) >= 1 && strings.HasPrefix(pathParts[0], "0x") && len(pathParts[0]) == 42 {
 		walletAddress = pathParts[0]
-		// Rest of the path after wallet address
 		if len(pathParts) > 1 {
 			requestPath = "/" + strings.Join(pathParts[1:], "/")
 		} else {
 			requestPath = "/"
 		}
 	} else {
-		// No wallet address in path, this shouldn't happen for REST
 		log.Printf("REST: No valid wallet address found in path: %s", r.URL.Path)
 		http.NotFound(w, r)
 		return
@@ -341,11 +474,9 @@ func (h *RestProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("REST: Parsed walletAddress=%s, requestPath=%s", walletAddress, requestPath)
 
-	// Find matching REST service by longest path prefix
 	for _, instances := range allServices {
 		if len(instances) > 0 && instances[0].Type == "rest" && instances[0].DeveloperAddress == walletAddress {
 			servicePath := instances[0].Path
-			// Match if request path starts with service path
 			if strings.HasPrefix(requestPath, servicePath) && len(servicePath) > len(longestMatch) {
 				longestMatch = servicePath
 				matchedDevAddr = instances[0].DeveloperAddress
@@ -374,42 +505,10 @@ func (h *RestProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get REST pipelines for this service
 	restPipelines, _ := h.storage.GetRestPipelineMap(matchedDevAddr, matchedServiceName)
 
-	// Build route keys with actual request path (not service path)
-	// The pipeline keys should match what's in registry.go
-	routeKeys := []string{
-		// Exact match: "GET /api/v1/profile"
-		r.Method + " " + requestPath,
-		// Without query params: "GET /api/v1/profile"
-		r.Method + " " + strings.Split(requestPath, "?")[0],
-	}
-
-	// Try to find a matching pipeline
-	for _, routeKey := range routeKeys {
-		if pipeline, exists := restPipelines[routeKey]; exists {
-			matchedPipeline = pipeline
-			log.Printf("REST: Matched pipeline for route: %s", routeKey)
-			break
-		}
-	}
-
-	// Continue with existing prefix matching logic...
-	if matchedPipeline == nil {
-		cleanPath := strings.Split(requestPath, "?")[0]
-		for routeKey, pipeline := range restPipelines {
-			parts := strings.SplitN(routeKey, " ", 2)
-			if len(parts) == 2 && parts[0] == r.Method {
-				pattern := parts[1]
-				if strings.HasPrefix(cleanPath, pattern) {
-					matchedPipeline = pipeline
-					log.Printf("REST: Matched pipeline via prefix for route: %s", routeKey)
-					break
-				}
-			}
-		}
-	}
+	// Use the unified param-aware pipeline matcher for ALL HTTP methods.
+	matchedPipeline = matchPipeline(r.Method, requestPath, restPipelines)
 
 	if matchedPipeline == nil {
 		log.Printf("REST: No pipeline found for %s %s, using fast proxy", r.Method, requestPath)
@@ -417,9 +516,20 @@ func (h *RestProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// WebSocket upgrades must use the WS-aware pipelined proxy.
+	// pipelinedProxy uses http.NewRequest + http.Client which drops the Upgrade
+	// header and makes hijacking impossible.
+	if websocket.IsWebSocketUpgrade(r) {
+		log.Printf("REST: WebSocket upgrade detected for %s %s — using WS-aware pipelined proxy", r.Method, requestPath)
+		h.wsPipelinedProxy(w, r, targetInstance, *matchedPipeline, walletAddress, requestPath)
+		return
+	}
+
 	log.Printf("REST: Using pipelined proxy for %s %s", r.Method, requestPath)
 	h.pipelinedProxy(w, r, targetInstance, *matchedPipeline, walletAddress, requestPath)
 }
+
+// ─── fastProxy ────────────────────────────────────────────────────────────────
 
 func (h *RestProxyHandler) fastProxy(w http.ResponseWriter, r *http.Request, targetInstance *router.ServiceInstance, requestPath string) {
 	var wg sync.WaitGroup
@@ -470,8 +580,6 @@ func (h *RestProxyHandler) fastProxy(w http.ResponseWriter, r *http.Request, tar
 	}
 
 	proxy := httputil.NewSingleHostReverseProxy(targetUrl)
-
-	// ✅ USE SHARED TRANSPORT with 30s timeout
 	proxy.Transport = common.GetTransportWithTimeout(30 * time.Second)
 	originalDirector := proxy.Director
 
@@ -485,7 +593,7 @@ func (h *RestProxyHandler) fastProxy(w http.ResponseWriter, r *http.Request, tar
 		originalDirector(req)
 		req.Host = targetUrl.Host
 		req.URL.Path = backendPath
-		req.URL.RawQuery = r.URL.RawQuery // ✅ CRITICAL: Preserve query params
+		req.URL.RawQuery = r.URL.RawQuery
 
 		req.Header = r.Header.Clone()
 
@@ -512,20 +620,25 @@ func (h *RestProxyHandler) fastProxy(w http.ResponseWriter, r *http.Request, tar
 		Body:    string(bodyBytes),
 	}
 
-	proxy.ModifyResponse = func(resp *http.Response) error {
-		respBodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return fmt.Errorf("error reading downstream response body: %v", err)
-		}
-		resp.Body.Close()
-		resp.Body = io.NopCloser(bytes.NewBuffer(respBodyBytes))
+	// Do NOT install ModifyResponse for WebSocket upgrades — it buffers the
+	// entire response body which prevents the reverse proxy from hijacking the
+	// connection for the WS tunnel.
+	if !websocket.IsWebSocketUpgrade(r) {
+		proxy.ModifyResponse = func(resp *http.Response) error {
+			respBodyBytes, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return fmt.Errorf("error reading downstream response body: %v", err)
+			}
+			resp.Body.Close()
+			resp.Body = io.NopCloser(bytes.NewBuffer(respBodyBytes))
 
-		logEntry.DownstreamResponse = logging.ResponseDetails{
-			StatusCode: resp.StatusCode,
-			Headers:    resp.Header.Clone(),
-			Body:       string(respBodyBytes),
+			logEntry.DownstreamResponse = logging.ResponseDetails{
+				StatusCode: resp.StatusCode,
+				Headers:    resp.Header.Clone(),
+				Body:       string(respBodyBytes),
+			}
+			return nil
 		}
-		return nil
 	}
 
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
@@ -537,6 +650,8 @@ func (h *RestProxyHandler) fastProxy(w http.ResponseWriter, r *http.Request, tar
 
 	proxy.ServeHTTP(lrw, r)
 }
+
+// ─── pipelinedProxy (REST) ────────────────────────────────────────────────────
 
 func (h *RestProxyHandler) pipelinedProxy(w http.ResponseWriter, r *http.Request, targetInstance *router.ServiceInstance, pipeline model.PipelineConfig, walletAddress, requestPath string) {
 	var wg sync.WaitGroup
@@ -593,7 +708,6 @@ func (h *RestProxyHandler) pipelinedProxy(w http.ResponseWriter, r *http.Request
 
 	initialCtxData := make(map[string]interface{})
 
-	// ✅ Add query parameters to pipeline context
 	if r.URL.RawQuery != "" {
 		queryParams := r.URL.Query()
 		queryParamsMap := make(map[string]interface{})
@@ -605,6 +719,8 @@ func (h *RestProxyHandler) pipelinedProxy(w http.ResponseWriter, r *http.Request
 			}
 		}
 		initialCtxData["query"] = queryParamsMap
+		// Also expose as "args" so pipeline steps can use $args.field in path templates
+		initialCtxData["args"] = queryParamsMap
 	}
 
 	var requestBodyData map[string]interface{}
@@ -612,6 +728,11 @@ func (h *RestProxyHandler) pipelinedProxy(w http.ResponseWriter, r *http.Request
 		if json.Unmarshal(bodyBytes, &requestBodyData) == nil {
 			initialCtxData["request"] = map[string]interface{}{
 				"body": requestBodyData,
+			}
+			// Also merge body fields directly into "args" if it's a JSON body POST/PUT/PATCH/etc.
+			// so $args.field resolves from body fields when no query string is present.
+			if initialCtxData["args"] == nil {
+				initialCtxData["args"] = requestBodyData
 			}
 		}
 	}
@@ -634,33 +755,22 @@ func (h *RestProxyHandler) pipelinedProxy(w http.ResponseWriter, r *http.Request
 	log.Printf("REST PipelinedProxy: servicePath=%s, requestPath=%s, backendPath=%s",
 		servicePath, requestPath, backendPath)
 
-	// ✅ Construct URL with query params
 	downstreamURL := targetUrl.String() + backendPath
 	if r.URL.RawQuery != "" {
 		downstreamURL += "?" + r.URL.RawQuery
 	}
 
 	downstreamReq, err := http.NewRequest(r.Method, downstreamURL, bytes.NewBuffer(bodyBytes))
-
 	if err != nil {
 		logEntry.FailureMessage = "Failed to create downstream request: " + err.Error()
 		http.Error(lrw, logEntry.FailureMessage, http.StatusInternalServerError)
 		return
 	}
 
+	// Start from original client headers, then layer pipeline context (X-Ctx-*)
+	// and node identity headers on top.
 	downstreamReq.Header = r.Header.Clone()
-
-	for key, val := range pipelineResult.Context {
-		headerKey := "X-Ctx-" + key
-		switch v := val.(type) {
-		case string:
-			downstreamReq.Header.Set(headerKey, v)
-		case fmt.Stringer:
-			downstreamReq.Header.Set(headerKey, v.String())
-		case int, int64, float32, float64:
-			downstreamReq.Header.Set(headerKey, fmt.Sprintf("%v", v))
-		}
-	}
+	h.injectPipelineHeaders(downstreamReq.Header, pipelineResult)
 
 	requestHash := sha256.Sum256(bodyBytes)
 	signature, err := h.nodeIdentity.Sign(requestHash[:])
@@ -723,4 +833,227 @@ func (h *RestProxyHandler) pipelinedProxy(w http.ResponseWriter, r *http.Request
 	}
 	lrw.WriteHeader(resp.StatusCode)
 	lrw.Write(finalResponseData)
+}
+
+// ─── wsPipelinedProxy ─────────────────────────────────────────────────────────
+//
+// Behaves identically to pipelinedProxy for the pre-pipeline phase:
+//   - promotes ?token query param → Authorization header (browser WS cannot
+//     send custom headers during the upgrade handshake)
+//   - builds the same context values (headers, log, waitgroup, wallet_address,
+//     routeOwner, serviceDeveloper)
+//   - runs the pre-pipeline so all PassHeaders (e.g. Authorization) reach the
+//     auth service and all pipeline-assigned X-Ctx-* values are produced
+//   - forwards the WebSocket upgrade via httputil.ReverseProxy (which supports
+//     http.Hijacker) with the full effective header set:
+//     original client headers + X-Ctx-* from pipeline + node identity headers
+//
+// Post-pipeline is intentionally skipped: WebSocket is a full-duplex stream
+// with no single response body to enrich.
+func (h *RestProxyHandler) wsPipelinedProxy(w http.ResponseWriter, r *http.Request, targetInstance *router.ServiceInstance, pipeline model.PipelineConfig, walletAddress, requestPath string) {
+	var wg sync.WaitGroup
+
+	logEntry := &logging.LogEntry{
+		Timestamp:      time.Now(),
+		LogType:        logging.GatewayLog,
+		TraceID:        generateTraceID(),
+		RequestAddress: r.RemoteAddr,
+		Subgraph:       targetInstance.Subgraph,
+		User:           walletAddress,
+	}
+
+	defer func() {
+		// WebSocket connections have no conventional response body to log.
+		logEntry.ClientResponse = logging.ResponseDetails{StatusCode: http.StatusSwitchingProtocols}
+		if logEntry.FailureMessage != "" {
+			logEntry.ClientResponse.StatusCode = http.StatusBadGateway
+		}
+		h.logger.Log(*logEntry)
+	}()
+
+	// ── 1. Effective upgrade headers ─────────────────────────────────────────
+	//
+	// Browsers cannot set the Authorization header on a WebSocket upgrade
+	// handshake. Any browser client (including the Grapthway terminal HTML)
+	// therefore passes the JWT as ?token=<value>. We promote it to the
+	// Authorization header here — before the pre-pipeline runs — so that
+	// preparePipelineHeaders in executor.go correctly picks it up via
+	// PassHeaders: ["Authorization"] and forwards it to the auth service.
+	//
+	// We work on a clone so the original *http.Request is never mutated.
+	// All downstream operations (context, proxy director) use upgradeHeaders.
+	upgradeHeaders := r.Header.Clone()
+	if upgradeHeaders.Get("Authorization") == "" {
+		if token := r.URL.Query().Get("token"); token != "" {
+			if !strings.HasPrefix(strings.ToLower(token), "bearer ") {
+				token = "Bearer " + token
+			}
+			upgradeHeaders.Set("Authorization", token)
+			log.Printf("WS: promoted ?token → Authorization for wallet=%s path=%s", walletAddress, requestPath)
+		}
+	}
+
+	// Log the effective headers (with Authorization resolved).
+	logEntry.ClientRequest = logging.RequestDetails{
+		Method:  r.Method,
+		URL:     r.URL.String(),
+		Headers: upgradeHeaders.Clone(),
+		Body:    "", // WS upgrade carries no body
+	}
+
+	// ── 2. Pipeline context — mirrors pipelinedProxy exactly ─────────────────
+	//
+	// "headers" must be upgradeHeaders (not r.Header) so that executor.go:993
+	//   originalHeaders.Get("Authorization")
+	// returns the token when building the auth service request.
+	ctx := context.WithValue(r.Context(), "headers", upgradeHeaders)
+	ctx = context.WithValue(ctx, "log", logEntry)
+	ctx = context.WithValue(ctx, "waitgroup", &wg)
+	ctx = context.WithValue(ctx, "wallet_address", walletAddress)
+	ctx = context.WithValue(ctx, "routeOwner", walletAddress)
+
+	serviceDeveloper := targetInstance.DeveloperAddress
+	if serviceDeveloper != "" {
+		ctx = context.WithValue(ctx, "serviceDeveloper", serviceDeveloper)
+		log.Printf("WS Pipeline: Set serviceDeveloper to %s for billing", serviceDeveloper)
+	}
+
+	// ── 3. Initial pipeline context data ─────────────────────────────────────
+	//
+	// WS upgrades carry no body, but query params are available.
+	// We expose them under both "query" (legacy) and "args" so that
+	// $args.<field> path interpolation works identically to REST/GraphQL.
+	initialCtxData := make(map[string]interface{})
+	if r.URL.RawQuery != "" {
+		queryParamsMap := make(map[string]interface{})
+		for key, values := range r.URL.Query() {
+			if len(values) == 1 {
+				queryParamsMap[key] = values[0]
+			} else {
+				queryParamsMap[key] = values
+			}
+		}
+		initialCtxData["query"] = queryParamsMap
+		// Also expose as "args" so pipeline steps can use $args.field
+		initialCtxData["args"] = queryParamsMap
+	}
+
+	// ── 4. Run pre-pipeline ───────────────────────────────────────────────────
+	//
+	// This is identical to pipelinedProxy. The pipeline calls the auth service
+	// (or any configured pre-step), collects the results (e.g. user object,
+	// valid flag) into pipelineResult.Context, which injectPipelineHeaders will
+	// later serialise as X-Ctx-User, X-Ctx-Valid, etc. on the downstream request.
+	pipelineResult, err := h.executor.ExecutePrePipeline(&pipeline, ctx, initialCtxData)
+	if err != nil {
+		logEntry.FailureMessage = "WS pre-pipeline failed: " + err.Error()
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	// ── 5. Resolve downstream target ─────────────────────────────────────────
+	targetUrl, err := url.Parse(targetInstance.URL)
+	if err != nil {
+		logEntry.FailureMessage = "Invalid target URL: " + err.Error()
+		http.Error(w, "invalid backend URL", http.StatusInternalServerError)
+		return
+	}
+
+	servicePath := targetInstance.Path
+	backendPath := strings.TrimPrefix(requestPath, servicePath)
+	if backendPath == "" {
+		backendPath = "/"
+	}
+
+	log.Printf("WS PipelinedProxy: servicePath=%s, requestPath=%s, backendPath=%s",
+		servicePath, requestPath, backendPath)
+
+	// ── 6. Forward via httputil.ReverseProxy (supports http.Hijacker) ────────
+	//
+	// Unlike http.NewRequest + http.Client (used by pipelinedProxy for REST),
+	// httputil.ReverseProxy detects the Upgrade header and switches to tunnel
+	// mode via http.Hijacker, completing the WebSocket handshake end-to-end.
+	proxy := httputil.NewSingleHostReverseProxy(targetUrl)
+	proxy.Transport = common.GetTransportWithTimeout(0) // 0 = no timeout for WS streams
+
+	proxy.Director = func(req *http.Request) {
+		req.URL.Scheme = targetUrl.Scheme
+		req.URL.Host = targetUrl.Host
+		req.Host = targetUrl.Host
+		req.URL.Path = backendPath
+		req.URL.RawQuery = r.URL.RawQuery
+
+		// Base: upgradeHeaders — contains all original client headers
+		// (Upgrade, Connection, Sec-WebSocket-Key/Version/Extensions, etc.)
+		// PLUS the Authorization header (either original or promoted from ?token).
+		req.Header = upgradeHeaders.Clone()
+
+		// Layer 1: X-Ctx-* headers from the pre-pipeline result.
+		// e.g. X-Ctx-User (serialised JSON of the user object from auth service)
+		//      X-Ctx-Valid (boolean string "true"/"false")
+		// server-agent's VerifyUserAccess middleware reads exactly these headers.
+		h.injectPipelineHeaders(req.Header, pipelineResult)
+
+		// Layer 2: Node identity headers (signature over empty body for WS).
+		emptyHash := sha256.Sum256([]byte{})
+		signature, err := h.nodeIdentity.Sign(emptyHash[:])
+		if err == nil {
+			req.Header.Set("X-Grapthway-Signature", hex.EncodeToString(signature))
+			req.Header.Set("X-Grapthway-Node-Address", h.nodeIdentity.Address)
+			req.Header.Set("X-Grapthway-Node-Public-Key", hex.EncodeToString(crypto.FromECDSAPub(h.nodeIdentity.PublicKey)))
+		}
+
+		logEntry.DownstreamRequest = logging.RequestDetails{
+			Method:  req.Method,
+			URL:     req.URL.String(),
+			Headers: req.Header.Clone(),
+		}
+	}
+
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		logEntry.FailureMessage = "WS proxy error: " + err.Error()
+		h.router.ReportConnectionFailure(targetInstance.URL)
+		http.Error(w, "WebSocket proxy error: "+err.Error(), http.StatusBadGateway)
+	}
+
+	// LoggingResponseWriter forwards Hijack() so wrapping is safe here.
+	lrw := NewLoggingResponseWriter(w)
+	proxy.ServeHTTP(lrw, r)
+}
+
+// ─── injectPipelineHeaders ────────────────────────────────────────────────────
+//
+// Serialises every value in pipelineResult.Context into an X-Ctx-<key> header
+// on the provided header map. This is the mechanism by which pipeline output
+// (e.g. authenticated user object, valid flag) reaches the downstream service.
+//
+// Maps and slices are JSON-encoded so complex objects survive the header wire
+// format intact (server-agent's VerifyUserAccess uses json.Unmarshal on them).
+func (h *RestProxyHandler) injectPipelineHeaders(headers http.Header, result *model.ExecutionResult) {
+	if result == nil {
+		return
+	}
+	for key, val := range result.Context {
+		headerKey := "X-Ctx-" + key
+		var headerVal string
+		switch v := val.(type) {
+		case string:
+			headerVal = v
+		case bool:
+			headerVal = fmt.Sprintf("%v", v)
+		case int, int64, float32, float64:
+			headerVal = fmt.Sprintf("%v", v)
+		case fmt.Stringer:
+			headerVal = v.String()
+		default:
+			if jsonVal, err := json.Marshal(v); err == nil {
+				headerVal = string(jsonVal)
+			} else {
+				headerVal = fmt.Sprintf("%v", v)
+			}
+		}
+		if headerVal != "" {
+			headers.Set(headerKey, headerVal)
+		}
+	}
 }
