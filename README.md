@@ -660,7 +660,7 @@ spec:
 
 - 📄 [White Paper (EN)](white_paper_en.html) — Protocol vision and technical architecture
 - 📄 [White Paper (ID)](white_paper_id.html) — Kertas putih teknis protokol
-- 📖 [Engineering Manual](engineering_manual_new.html) — Complete technical reference
+- 📖 [Engineering Manual](engineering_manual.html) — Complete technical reference
 - 📦 [Go SDK Docs](sdk/golang/readme.md)
 - 📦 [JavaScript SDK Docs](sdk/javascript/readme.md)
 
