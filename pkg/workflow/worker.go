@@ -211,7 +211,7 @@ func (w *Worker) ProcessDurableStep(instance *Instance) (map[string]interface{},
 		log.Printf("WORKER: Instance %s, Step %d: Conditional false, skipping.", instance.ID, instance.CurrentStep)
 		stepLog := toPipelineStepLog(step)
 		instance.StepLogs = append(instance.StepLogs, stepLog)
-		logEntry.PreSuccessSteps = append(logEntry.PreSuccessSteps, stepLog) // Skipped is a form of success
+		logEntry.PreSuccessSteps = append(logEntry.PreSuccessSteps, stepLog)
 		return nil, nil, nil
 	}
 
@@ -225,8 +225,10 @@ func (w *Worker) ProcessDurableStep(instance *Instance) (map[string]interface{},
 	} else if step.CallWorkflow != "" {
 		stepResult, stepErr = w.executeNestedWorkflowStep(instance, step, &stepLog)
 	} else if step.Service != "" && step.Path != "" {
+		// REST step — routes through gateway so pre-pipelines (auth, billing) run
 		stepResult, stepErr = w.executeRESTStep(instance, step, &stepLog)
 	} else if step.Service != "" && step.Field != "" {
+		// GraphQL step — routes through gateway so schema merging and pre-pipelines run
 		stepResult, stepErr = w.executeGraphQLStep(instance, step, &stepLog)
 	} else {
 		stepErr = fmt.Errorf("invalid pipeline step configuration: missing service/field or service/path")
@@ -246,30 +248,34 @@ func (w *Worker) ProcessDurableStep(instance *Instance) (map[string]interface{},
 				instance.Context[k] = v
 			}
 		} else if step.Assign != nil {
-			dataToAssign := stepResult
-			if step.Field != "" {
-				if fieldData, ok := stepResult[step.Field]; ok {
-					dataToAssign = map[string]interface{}{step.Field: fieldData}
-				}
-			}
-
-			// ✅ FIX: Handle both root-level and nested responses
 			for ctxKey, resKey := range step.Assign {
 				if resKey == "*" {
-					// Assign the entire response or field
 					if step.Field != "" {
-						instance.Context[ctxKey] = dataToAssign[step.Field]
+						instance.Context[ctxKey] = stepResult[step.Field]
 					} else {
-						instance.Context[ctxKey] = dataToAssign
+						instance.Context[ctxKey] = stepResult
 					}
-				} else {
-					// ✅ NEW: Try to get from root level first
-					if val, ok := stepResult[resKey]; ok {
-						instance.Context[ctxKey] = val
-					} else if step.Field != "" {
-						// Fallback: try nested access for GraphQL responses
-						if result, ok := dataToAssign[step.Field].(map[string]interface{}); ok {
-							if val, ok := result[resKey]; ok {
+					continue
+				}
+
+				// Priority 1: direct root-level key (REST responses)
+				if val, ok := stepResult[resKey]; ok {
+					instance.Context[ctxKey] = val
+					continue
+				}
+
+				// Priority 2: dot-path traversal (e.g. "data.product.id")
+				if val, ok := getValueFromContext(stepResult, resKey); ok {
+					instance.Context[ctxKey] = val
+					continue
+				}
+
+				// Priority 3: GraphQL field envelope unwrap
+				if step.Field != "" {
+					if fieldData, ok := stepResult[step.Field]; ok {
+						switch fd := fieldData.(type) {
+						case map[string]interface{}:
+							if val, ok := getValueFromContext(fd, resKey); ok {
 								instance.Context[ctxKey] = val
 							}
 						}
@@ -282,7 +288,40 @@ func (w *Worker) ProcessDurableStep(instance *Instance) (map[string]interface{},
 	return stepResult, executedTx, stepErr
 }
 
+// ─── pickGatewayInstance ──────────────────────────────────────────────────────
+//
+// Discovers a healthy gateway node from the service registry.
+// The gateway registers itself via selfAnnounce() under systemDeveloperAddress /
+// internalGrapthwayServiceName.  We retry a few times because the worker may
+// start before the gateway has had a chance to announce itself.
+func (w *Worker) pickGatewayInstance() (*router.ServiceInstance, error) {
+	var instances []router.ServiceInstance
+	var err error
+
+	for i := 0; i < 5; i++ {
+		instances, err = w.storage.GetService(systemDeveloperAddress, internalGrapthwayServiceName, "internal")
+		if err == nil && len(instances) > 0 {
+			break
+		}
+		// Fallback: try without subgraph filter
+		instances, err = w.storage.GetService(systemDeveloperAddress, internalGrapthwayServiceName, "")
+		if err == nil && len(instances) > 0 {
+			break
+		}
+		log.Printf("WORKER: Could not find gateway instance (attempt %d/5). Retrying in 2s...", i+1)
+		time.Sleep(2 * time.Second)
+	}
+
+	if err != nil || len(instances) == 0 {
+		return nil, fmt.Errorf("no available gateway nodes after multiple retries")
+	}
+
+	inst := router.NewServiceRouter().PickInstance(instances)
+	return &inst, nil
+}
+
 func (w *Worker) executeLedgerStep(instance *Instance, step model.PipelineStep, stepLog *logging.PipelineStepLog) (map[string]interface{}, *types.Transaction, error) {
+	now := time.Now()
 	action := step.LedgerExecute
 
 	// Check if this is a token operation
@@ -356,21 +395,19 @@ func (w *Worker) executeLedgerStep(instance *Instance, step model.PipelineStep, 
 		Body:   string(reqBodyBytes),
 	}
 
-	// Use the DeveloperID from the instance as the spender
-	// This is the service owner who created the workflow
 	if instance.DeveloperID == "" {
 		return nil, nil, fmt.Errorf("cannot execute ledger step: workflow instance is missing developer ID (service owner)")
 	}
 
 	tx := types.Transaction{
-		ID:        fmt.Sprintf("tx-delegated-%d", time.Now().UnixNano()),
+		ID:        util.GenerateTxID("tx-delegated-", fromAddress, toAddress, amountMicro, now.UnixNano()),
 		Type:      model.DelegatedTransferTransaction,
 		From:      fromAddress,
 		To:        toAddress,
 		Amount:    amountMicro,
-		Spender:   instance.DeveloperID, // Service owner (developer) is the spender
-		Timestamp: time.Now(),
-		CreatedAt: time.Now(),
+		Spender:   instance.DeveloperID,
+		Timestamp: now,
+		CreatedAt: now,
 	}
 
 	processedTx, err := w.storage.BroadcastDelegatedTransaction(w.ctx, tx)
@@ -389,12 +426,11 @@ func (w *Worker) executeLedgerStep(instance *Instance, step model.PipelineStep, 
 	return nil, processedTx, nil
 }
 
-// executeTokenLedgerStep handles token transfer operations in durable workflows
+// executeTokenLedgerStep handles token transfer operations in durable workflows.
 func (w *Worker) executeTokenLedgerStep(instance *Instance, action *model.LedgerExecuteAction, stepLog *logging.PipelineStepLog) (map[string]interface{}, *types.Transaction, error) {
-	// Resolve token address
+	now := time.Now()
 	tokenAddress := action.TokenAddress
 
-	// Resolve from address
 	fromValue, fromInContext := getValueFromContext(instance.Context, action.From.(string))
 	var fromAddress string
 	if fromInContext {
@@ -407,7 +443,6 @@ func (w *Worker) executeTokenLedgerStep(instance *Instance, action *model.Ledger
 		fromAddress = action.From.(string)
 	}
 
-	// Resolve to address
 	toValue, toInContext := getValueFromContext(instance.Context, action.To.(string))
 	var toAddress string
 	if toInContext {
@@ -420,7 +455,6 @@ func (w *Worker) executeTokenLedgerStep(instance *Instance, action *model.Ledger
 		toAddress = action.To.(string)
 	}
 
-	// Resolve amount (already in token's micro units)
 	var amountMicro uint64
 	switch v := action.Amount.(type) {
 	case string:
@@ -451,7 +485,6 @@ func (w *Worker) executeTokenLedgerStep(instance *Instance, action *model.Ledger
 		return nil, nil, fmt.Errorf("tokenLedgerExecute failed: amount has an invalid type %T", v)
 	}
 
-	// Build request body for logging
 	reqBodyMap := map[string]interface{}{
 		"from":         fromAddress,
 		"to":           toAddress,
@@ -465,26 +498,22 @@ func (w *Worker) executeTokenLedgerStep(instance *Instance, action *model.Ledger
 		Body:   string(reqBodyBytes),
 	}
 
-	// Use the DeveloperID from the instance as the spender
-	// This is the service owner who created the workflow
 	if instance.DeveloperID == "" {
 		return nil, nil, fmt.Errorf("cannot execute token ledger step: workflow instance is missing developer ID (service owner)")
 	}
 
-	// Create token transfer transaction
 	tx := types.Transaction{
-		ID:           fmt.Sprintf("tx-token-transfer-workflow-%d", time.Now().UnixNano()),
+		ID:           util.GenerateTxID("tx-delegated-token-", fromAddress, toAddress, amountMicro, now.UnixNano()),
 		Type:         model.TokenTransferTransaction,
 		From:         fromAddress,
 		To:           toAddress,
 		Amount:       amountMicro,
 		TokenAddress: tokenAddress,
-		Spender:      instance.DeveloperID, // Service owner/developer is the spender
-		Timestamp:    time.Now(),
-		CreatedAt:    time.Now(),
+		Spender:      instance.DeveloperID,
+		Timestamp:    now,
+		CreatedAt:    now,
 	}
 
-	// Submit through ledger
 	processedTx, err := w.storage.BroadcastDelegatedTransaction(w.ctx, tx)
 	if err != nil {
 		stepLog.Response.StatusCode = 500
@@ -492,10 +521,7 @@ func (w *Worker) executeTokenLedgerStep(instance *Instance, action *model.Ledger
 		return nil, nil, fmt.Errorf("tokenLedgerExecute transaction failed: %w", err)
 	}
 
-	// Build response
-	respBodyMap := map[string]interface{}{
-		"transactionId": processedTx.ID,
-	}
+	respBodyMap := map[string]interface{}{"transactionId": processedTx.ID}
 	respBodyBytes, _ := json.Marshal(respBodyMap)
 	stepLog.Response.StatusCode = 200
 	stepLog.Response.Body = string(respBodyBytes)
@@ -526,7 +552,6 @@ func (w *Worker) evaluateConditional(step model.PipelineStep, context map[string
 }
 
 func (w *Worker) executeNestedWorkflowStep(instance *Instance, step model.PipelineStep, stepLog *logging.PipelineStepLog) (map[string]interface{}, error) {
-	// CRITICAL: Use the workflow instance's DeveloperID for nested workflow lookup
 	developerID := instance.DeveloperID
 	if developerID == "" {
 		return nil, fmt.Errorf("workflow instance missing developer ID, cannot resolve nested workflow")
@@ -550,37 +575,21 @@ func (w *Worker) executeNestedWorkflowStep(instance *Instance, step model.Pipeli
 
 	log.Printf("WORKER: Instance %s is delegating nested in-memory workflow '%s' to another node.", instance.ID, step.CallWorkflow)
 
-	var servers []router.ServiceInstance
-	var discoveryErr error
-	for i := 0; i < 5; i++ {
-		servers, discoveryErr = w.storage.GetService(systemDeveloperAddress, internalGrapthwayServiceName, "internal")
-		if discoveryErr == nil && len(servers) > 0 {
-			break
-		}
-		servers, discoveryErr = w.storage.GetService(systemDeveloperAddress, internalGrapthwayServiceName, "")
-		if discoveryErr == nil && len(servers) > 0 {
-			break
-		}
-		log.Printf("WORKER: Could not find gateway node for workflow delegation (attempt %d/5). Retrying in 2 seconds...", i+1)
-		time.Sleep(2 * time.Second)
+	gatewayInst, err := w.pickGatewayInstance()
+	if err != nil {
+		return nil, fmt.Errorf("no available gateway nodes to execute nested workflow '%s': %w", step.CallWorkflow, err)
 	}
-
-	if discoveryErr != nil || len(servers) == 0 {
-		return nil, fmt.Errorf("no available gateway nodes to execute nested workflow '%s' after multiple retries", step.CallWorkflow)
-	}
-
-	serverInstance := router.NewServiceRouter().PickInstance(servers)
 
 	payload := map[string]interface{}{
 		"workflowName":     step.CallWorkflow,
-		"developerAddress": developerID, // Use the workflow instance's developer ID
+		"developerAddress": developerID,
 		"context":          instance.Context,
 		"traceId":          instance.ParentTraceID,
 		"headers":          instance.OriginalHeaders,
 	}
 	payloadBytes, _ := json.Marshal(payload)
 
-	req, err := http.NewRequest("POST", serverInstance.URL+"/admin/internal/execute-workflow", bytes.NewBuffer(payloadBytes))
+	req, err := http.NewRequest("POST", gatewayInst.URL+"/admin/internal/execute-workflow", bytes.NewBuffer(payloadBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create internal request: %w", err)
 	}
@@ -621,28 +630,66 @@ func (w *Worker) createRequestSignature(body []byte) ([]byte, error) {
 	return w.nodeIdentity.Sign(digest[:])
 }
 
+// ─── executeRESTStep ──────────────────────────────────────────────────────────
+//
+// Routes the request through a gateway node instead of calling the upstream
+// service directly. This ensures:
+//
+//  1. The service's registered pre-pipeline runs (auth validation, billing, etc.)
+//  2. The gateway's rate-limiting and middleware chain applies.
+//  3. The request signature comes from a known gateway node rather than an
+//     anonymous worker, so downstream GrapthwayMiddleware accepts it.
+//
+// URL pattern: {gatewayURL}/{developerAddress}/{servicePath}/{stepPath}
+// e.g.         http://gw:5001/0xDEV.../product-service/api/admin/tiers/abc
 func (w *Worker) executeRESTStep(instance *Instance, step model.PipelineStep, stepLog *logging.PipelineStepLog) (map[string]interface{}, error) {
-	developerAddress, serviceName, err := util.ParseCompositeKey(step.Service)
+	resolvedService := resolveServiceKey(step.Service, instance.Context)
+	developerAddress, serviceName, err := util.ParseCompositeKey(resolvedService)
 	if err != nil {
 		return nil, fmt.Errorf("invalid service format in pipeline step: %s", step.Service)
 	}
-	instances, err := w.storage.GetService(developerAddress, serviceName, "")
-	if err != nil || len(instances) == 0 {
-		return nil, fmt.Errorf("service '%s' unavailable", step.Service)
+
+	// Look up the target service to validate it exists and get its registered path.
+	serviceInstances, err := w.storage.GetService(developerAddress, serviceName, "")
+	if err != nil || len(serviceInstances) == 0 {
+		return nil, fmt.Errorf("service '%s' unavailable", resolvedService)
 	}
-	serviceInstance := router.NewServiceRouter().PickInstance(instances)
-	fullURL := serviceInstance.URL + step.Path
+	// We only need the service metadata (Path) to build the gateway URL correctly.
+	// The actual instance selection is done by the gateway itself.
+	serviceInst := router.NewServiceRouter().PickInstance(serviceInstances)
+
+	// Route through the gateway so pipelines and middleware fire.
+	gatewayInst, err := w.pickGatewayInstance()
+	if err != nil {
+		return nil, fmt.Errorf("no gateway available to route REST step for service '%s': %w", resolvedService, err)
+	}
+
+	// Interpolate $variables in the step path before building the URL.
+	interpolatedPath := interpolatePathVars(step.Path, instance.Context)
+
+	// The gateway expects:  /{developerAddress}/{servicePath_and_rest}
+	// servicePath is registered as e.g. "/product-service/api"
+	// interpolatedPath is the full path the service registered, e.g. "/product-service/api/admin/tiers/abc"
+	// so we just append it after the developer address.
+	//
+	// If the step path already includes the service base path (the common pattern)
+	// we use it directly. If it doesn't (bare path like "/admin/tiers/abc"), we
+	// prepend the service's registered path.
+	fullServicePath := interpolatedPath
+	if serviceInst.Path != "" && !strings.HasPrefix(interpolatedPath, serviceInst.Path) {
+		fullServicePath = serviceInst.Path + interpolatedPath
+	}
+	gatewayURL := fmt.Sprintf("%s/%s%s", gatewayInst.URL, developerAddress, fullServicePath)
 
 	var bodyBytes []byte
 	var reqBodyString string
 
-	// ✅ CRITICAL: For GET requests, convert BodyMapping to query parameters
 	if strings.ToUpper(step.Method) == "GET" {
+		// For GET: convert BodyMapping to query parameters.
 		if len(step.BodyMapping) > 0 {
-			parsedURL, parseErr := url.Parse(fullURL)
+			parsedURL, parseErr := url.Parse(gatewayURL)
 			if parseErr == nil {
 				q := parsedURL.Query()
-
 				for paramKey, contextKey := range step.BodyMapping {
 					if val, ok := getValueFromContext(instance.Context, contextKey); ok {
 						switch v := val.(type) {
@@ -656,27 +703,22 @@ func (w *Worker) executeRESTStep(instance *Instance, step model.PipelineStep, st
 							q.Set(paramKey, fmt.Sprintf("%v", val))
 						}
 					} else {
-						// Use as static value if not found in context
 						q.Set(paramKey, contextKey)
 					}
 				}
-
 				parsedURL.RawQuery = q.Encode()
-				fullURL = parsedURL.String()
+				gatewayURL = parsedURL.String()
 			}
 		}
-
-		// GET requests have no body
 		bodyBytes = []byte{}
 		reqBodyString = ""
 	} else {
-		// For POST/PUT/etc, build JSON body as normal
+		// For POST/PUT/PATCH/DELETE: build JSON body from BodyMapping.
 		reqBodyReader, reqBodyStr, err := buildRequestBodyFromContext(step.BodyMapping, instance.Context)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build request body: %w", err)
 		}
 		reqBodyString = reqBodyStr
-
 		if reqBodyReader != nil {
 			bodyBytes, err = io.ReadAll(reqBodyReader)
 			if err != nil {
@@ -685,12 +727,18 @@ func (w *Worker) executeRESTStep(instance *Instance, step model.PipelineStep, st
 		}
 	}
 
-	req, err := http.NewRequest(step.Method, fullURL, bytes.NewBuffer(bodyBytes))
+	req, err := http.NewRequest(step.Method, gatewayURL, bytes.NewBuffer(bodyBytes))
 	if err != nil {
 		return nil, err
 	}
+
+	// Pass original request headers (Authorization etc.) so the gateway's
+	// pre-pipeline can pick them up via PassHeaders.
 	req.Header = preparePipelineHeaders(instance.OriginalHeaders, step, instance.Context)
 
+	// Sign the request with the worker's node identity so the downstream service's
+	// GrapthwayMiddleware accepts it. The gateway will re-sign when forwarding
+	// to the upstream service, but this signature covers the gateway leg.
 	signature, err := w.createRequestSignature(bodyBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign REST request: %w", err)
@@ -699,22 +747,29 @@ func (w *Worker) executeRESTStep(instance *Instance, step model.PipelineStep, st
 	req.Header.Set("X-Grapthway-Node-Address", w.nodeIdentity.Address)
 	req.Header.Set("X-Grapthway-Node-Public-Key", hex.EncodeToString(crypto.FromECDSAPub(w.nodeIdentity.PublicKey)))
 
-	stepLog.Request = logging.RequestDetails{Method: req.Method, URL: req.URL.String(), Headers: req.Header.Clone(), Body: reqBodyString}
+	stepLog.Request = logging.RequestDetails{
+		Method:  req.Method,
+		URL:     req.URL.String(),
+		Headers: req.Header.Clone(),
+		Body:    reqBodyString,
+	}
 
 	timeout := common.ParseTimeout(step.TTL, 60*time.Second)
 	client := common.GetHTTPClientWithTimeout(timeout)
-	log.Printf("🕐 WORKER REST %s %s with timeout: %v (Instance: %s)", step.Method, fullURL, timeout, instance.ID)
+	log.Printf("🕐 WORKER REST (via gateway) %s %s with timeout: %v (Instance: %s)", step.Method, gatewayURL, timeout, instance.ID)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		router := router.NewServiceRouter()
-		router.ReportConnectionFailure(serviceInstance.URL)
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
-	stepLog.Response = logging.ResponseDetails{StatusCode: resp.StatusCode, Headers: resp.Header.Clone(), Body: string(respBody)}
+	stepLog.Response = logging.ResponseDetails{
+		StatusCode: resp.StatusCode,
+		Headers:    resp.Header.Clone(),
+		Body:       string(respBody),
+	}
 
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("service returned status %d: %s", resp.StatusCode, string(respBody))
@@ -723,26 +778,55 @@ func (w *Worker) executeRESTStep(instance *Instance, step model.PipelineStep, st
 	var result map[string]interface{}
 	if len(respBody) > 0 && strings.Contains(resp.Header.Get("Content-Type"), "application/json") {
 		if err := json.Unmarshal(respBody, &result); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal REST response from %s: %w", fullURL, err)
+			return nil, fmt.Errorf("failed to unmarshal REST response from %s: %w", gatewayURL, err)
 		}
 		return result, nil
 	}
 
-	// ✅ Fallback for non-JSON or empty responses
 	return map[string]interface{}{}, nil
 }
 
+// ─── executeGraphQLStep ───────────────────────────────────────────────────────
+//
+// Routes the GraphQL request through a gateway node instead of posting directly
+// to the upstream service. This ensures:
+//
+//  1. Schema stitching / federation is applied by the gateway's merged schema.
+//  2. The service's registered GraphQL pre-pipeline runs (auth, billing, etc.).
+//  3. The correct /graphql endpoint URL is used regardless of what the service
+//     registered as its base URL.
+//
+// URL pattern: {gatewayURL}/{developerAddress}/{subgraphName}/graphql
+// e.g.         http://gw:5001/0xDEV.../my-subgraph/graphql
 func (w *Worker) executeGraphQLStep(instance *Instance, step model.PipelineStep, stepLog *logging.PipelineStepLog) (map[string]interface{}, error) {
-	developerAddress, serviceName, err := util.ParseCompositeKey(step.Service)
+	resolvedService := resolveServiceKey(step.Service, instance.Context)
+	developerAddress, serviceName, err := util.ParseCompositeKey(resolvedService)
 	if err != nil {
 		return nil, fmt.Errorf("invalid service format in pipeline step: %s", step.Service)
 	}
-	instances, err := w.storage.GetService(developerAddress, serviceName, "")
-	if err != nil || len(instances) == 0 {
-		return nil, fmt.Errorf("service '%s' unavailable", step.Service)
-	}
-	serviceInstance := router.NewServiceRouter().PickInstance(instances)
 
+	// Look up the target service to get its subgraph name (needed for the gateway URL).
+	serviceInstances, err := w.storage.GetService(developerAddress, serviceName, "")
+	if err != nil || len(serviceInstances) == 0 {
+		return nil, fmt.Errorf("service '%s' unavailable", resolvedService)
+	}
+	serviceInst := router.NewServiceRouter().PickInstance(serviceInstances)
+
+	// Route through the gateway.
+	gatewayInst, err := w.pickGatewayInstance()
+	if err != nil {
+		return nil, fmt.Errorf("no gateway available to route GraphQL step for service '%s': %w", resolvedService, err)
+	}
+
+	// Build the correct gateway GraphQL URL:
+	// /{developerAddress}/{subgraphName}/graphql
+	subgraphName := serviceInst.Subgraph
+	if subgraphName == "" {
+		subgraphName = serviceName // fall back to service name as subgraph
+	}
+	graphqlURL := fmt.Sprintf("%s/%s/%s/graphql", gatewayInst.URL, developerAddress, subgraphName)
+
+	// Resolve arguments from workflow context.
 	resolvedArgs := make(map[string]interface{})
 	if step.ArgsMapping != nil {
 		for argName, contextKey := range step.ArgsMapping {
@@ -754,11 +838,20 @@ func (w *Worker) executeGraphQLStep(instance *Instance, step model.PipelineStep,
 		}
 	}
 
+	// Determine operation type (query vs mutation).
 	operationType := "query"
 	if step.Operation != "" {
 		operationType = step.Operation
+	} else if strings.ToLower(step.Method) == "mutation" {
+		operationType = "mutation"
 	} else {
-		if strings.HasPrefix(strings.ToLower(step.Field), "create") || strings.HasPrefix(strings.ToLower(step.Field), "update") || strings.HasPrefix(strings.ToLower(step.Field), "delete") {
+		lower := strings.ToLower(step.Field)
+		if strings.HasPrefix(lower, "create") ||
+			strings.HasPrefix(lower, "update") ||
+			strings.HasPrefix(lower, "delete") ||
+			strings.HasPrefix(lower, "insert") ||
+			strings.HasPrefix(lower, "upsert") ||
+			strings.HasPrefix(lower, "remove") {
 			operationType = "mutation"
 		}
 	}
@@ -767,9 +860,16 @@ func (w *Worker) executeGraphQLStep(instance *Instance, step model.PipelineStep,
 	reqBodyMap := map[string]interface{}{"query": query}
 	jsonBody, _ := json.Marshal(reqBodyMap)
 
-	req, _ := http.NewRequest("POST", serviceInstance.URL, bytes.NewBuffer(jsonBody))
-	req.Header = preparePipelineHeaders(instance.OriginalHeaders, step, instance.Context)
+	req, err := http.NewRequest("POST", graphqlURL, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GraphQL request: %w", err)
+	}
 
+	// Pass original headers (Authorization etc.) through.
+	req.Header = preparePipelineHeaders(instance.OriginalHeaders, step, instance.Context)
+	req.Header.Set("Content-Type", "application/json")
+
+	// Sign with node identity.
 	signature, err := w.createRequestSignature(jsonBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign GraphQL request: %w", err)
@@ -778,22 +878,33 @@ func (w *Worker) executeGraphQLStep(instance *Instance, step model.PipelineStep,
 	req.Header.Set("X-Grapthway-Node-Address", w.nodeIdentity.Address)
 	req.Header.Set("X-Grapthway-Node-Public-Key", hex.EncodeToString(crypto.FromECDSAPub(w.nodeIdentity.PublicKey)))
 
-	stepLog.Request = logging.RequestDetails{Method: req.Method, URL: req.URL.String(), Headers: req.Header.Clone(), Body: string(jsonBody)}
+	stepLog.Request = logging.RequestDetails{
+		Method:  req.Method,
+		URL:     req.URL.String(),
+		Headers: req.Header.Clone(),
+		Body:    string(jsonBody),
+	}
 
 	timeout := common.ParseTimeout(step.TTL, 60*time.Second)
 	client := common.GetHTTPClientWithTimeout(timeout)
-	log.Printf("🕐 WORKER GraphQL POST %s with timeout: %v (Instance: %s)", serviceInstance.URL, timeout, instance.ID)
+	log.Printf("🕐 WORKER GraphQL (via gateway) POST %s with timeout: %v (Instance: %s)", graphqlURL, timeout, instance.ID)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		router := router.NewServiceRouter() // Or pass router as dependency
-		router.ReportConnectionFailure(serviceInstance.URL)
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
-	stepLog.Response = logging.ResponseDetails{StatusCode: resp.StatusCode, Headers: resp.Header.Clone(), Body: string(respBody)}
+	stepLog.Response = logging.ResponseDetails{
+		StatusCode: resp.StatusCode,
+		Headers:    resp.Header.Clone(),
+		Body:       string(respBody),
+	}
+
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("gateway returned status %d for GraphQL request: %s", resp.StatusCode, string(respBody))
+	}
 
 	var result model.GraphQLResponse
 	if err := json.Unmarshal(respBody, &result); err != nil {
@@ -803,6 +914,81 @@ func (w *Worker) executeGraphQLStep(instance *Instance, step model.PipelineStep,
 		return result.Data, fmt.Errorf("graphql error: %s", result.Errors[0].Message)
 	}
 	return result.Data, nil
+}
+
+// interpolatePathVars replaces $-prefixed variables in a path template with
+// values resolved from the workflow instance context. Supports:
+//
+//	$request.body.<field>  →  instance.Context["request"]["body"]["<field>"]
+//	$args.<field>          →  instance.Context["args"]["<field>"]
+//	$<field>               →  instance.Context["<field>"]
+//
+// Multiple injections per path are fully supported.
+// Unknown tokens are left unchanged so callers can detect missing values.
+func interpolatePathVars(path string, ctx map[string]interface{}) string {
+	if ctx == nil || !strings.Contains(path, "$") {
+		return path
+	}
+	segments := strings.Split(path, "/")
+	for i, seg := range segments {
+		if !strings.Contains(seg, "$") {
+			continue
+		}
+		result := seg
+		for {
+			dollarIdx := strings.Index(result, "$")
+			if dollarIdx == -1 {
+				break
+			}
+			tail := result[dollarIdx+1:]
+			endIdx := strings.IndexAny(tail, "/?&=")
+			var token string
+			if endIdx == -1 {
+				token = tail
+			} else {
+				token = tail[:endIdx]
+			}
+			if token == "" {
+				break
+			}
+			val, found := getValueFromContext(ctx, token)
+			if !found {
+				break
+			}
+			result = strings.Replace(result, "$"+token, fmt.Sprintf("%v", val), 1)
+		}
+		segments[i] = result
+	}
+	return strings.Join(segments, "/")
+}
+
+// resolveServiceKey resolves a $-prefixed variable in the developer-address
+// portion of a composite service key ("developerAddress:serviceName").
+func resolveServiceKey(service string, ctx map[string]interface{}) string {
+	if ctx == nil || !strings.Contains(service, "$") {
+		return service
+	}
+	colonIdx := strings.Index(service, ":")
+	if colonIdx == -1 {
+		return service
+	}
+	addrPart := service[:colonIdx]
+	svcPart := service[colonIdx:]
+
+	if !strings.HasPrefix(addrPart, "$") {
+		return service
+	}
+
+	token := addrPart[1:]
+	if token == "" {
+		return service
+	}
+
+	val, found := getValueFromContext(ctx, token)
+	if !found {
+		return service
+	}
+	return fmt.Sprintf("%v", val) + svcPart
 }
 
 func getValueFromContext(context map[string]interface{}, key string) (interface{}, bool) {

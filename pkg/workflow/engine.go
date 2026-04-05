@@ -14,6 +14,7 @@ import (
 	"grapthway/pkg/logging"
 	"grapthway/pkg/model"
 	"grapthway/pkg/p2p"
+	"grapthway/pkg/util"
 
 	json "github.com/json-iterator/go"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
@@ -396,6 +397,7 @@ func (e *Engine) processUpdate(report UpdateReport) {
 
 // --- FIX START: Implemented full compensating transaction logic for durable workflows ---
 func (e *Engine) initiateWorkflowRollback(instance *Instance) {
+	now := time.Now()
 	if len(instance.Transactions) == 0 {
 		return
 	}
@@ -410,23 +412,23 @@ func (e *Engine) initiateWorkflowRollback(instance *Instance) {
 		// Create a debit transaction to take the money back from the original recipient.
 		// This is a system-level transaction that bypasses allowance checks.
 		rollbackDebitTx := types.Transaction{
-			ID:        fmt.Sprintf("tx-rollback-debit-%s", tx.ID),
+			ID:        util.GenerateTxID("tx-rollback-debit-", tx.To, "", tx.Amount, now.UnixNano()),
 			Type:      model.RollbackDebitTransaction,
 			From:      tx.To, // Debit the original recipient
 			Amount:    tx.Amount,
-			Timestamp: time.Now(),
-			CreatedAt: time.Now(),
+			Timestamp: now,
+			CreatedAt: now,
 		}
 
 		// Create a credit transaction to give the money back to the original sender.
 		// This is also a system-level transaction.
 		rollbackCreditTx := types.Transaction{
-			ID:        fmt.Sprintf("tx-rollback-credit-%s", tx.ID),
+			ID:        util.GenerateTxID("tx-rollback-credit-", "", tx.From, tx.Amount, now.UnixNano()),
 			Type:      model.RollbackCreditTransaction,
 			To:        tx.From, // Credit the original sender
 			Amount:    tx.Amount,
-			Timestamp: time.Now(),
-			CreatedAt: time.Now(),
+			Timestamp: now,
+			CreatedAt: now,
 		}
 
 		// Submit both system transactions to the ledger.

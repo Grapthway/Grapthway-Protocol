@@ -2,12 +2,12 @@ package ledgeraggregator
 
 import (
 	"context"
-	"fmt"
 	"grapthway/pkg/crypto"
 	penaltybox "grapthway/pkg/economic/worker/penalty-box"
 	"grapthway/pkg/ledger"
 	"grapthway/pkg/ledger/types"
 	"grapthway/pkg/model"
+	"grapthway/pkg/util"
 	"log"
 	"sync"
 	"time"
@@ -113,7 +113,7 @@ func (agg *LedgerAggregator) flushBatch() {
 			totalReward += (totalDebit * 8) / 10
 
 			debitTx := types.Transaction{
-				ID:        fmt.Sprintf("tx-debit-%s-%d", devID, now.UnixNano()+int64(len(devID))),
+				ID:        util.GenerateTxID("tx-debit-", devID, "", totalDebit, now.UnixNano()),
 				Type:      model.DebitTransaction,
 				From:      devID,
 				Amount:    totalDebit,
@@ -130,7 +130,7 @@ func (agg *LedgerAggregator) flushBatch() {
 
 		if totalReward > 0 {
 			rewardTx := types.Transaction{
-				ID:        fmt.Sprintf("tx-reward-%s-%d", agg.nodeIdentity.Address, now.UnixNano()),
+				ID:        util.GenerateTxID("tx-reward-", agg.nodeIdentity.Address, "", totalReward, now.UnixNano()),
 				Type:      model.RewardTransaction,
 				To:        agg.nodeIdentity.Address,
 				Amount:    totalReward,

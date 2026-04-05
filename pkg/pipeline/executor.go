@@ -221,14 +221,15 @@ func (pe *PipelineExecutor) executeSingleStep(step model.PipelineStep, stepLog *
 		return pe.executeWorkflowCall(step, parentCtx, pipelineContext)
 	}
 
-	developerAddress, serviceName, err := util.ParseCompositeKey(step.Service)
+	resolvedService := resolveServiceKey(step.Service, pipelineContext)
+	developerAddress, serviceName, err := util.ParseCompositeKey(resolvedService)
 	if err != nil {
 		return nil, fmt.Errorf("invalid service format in pipeline step: %s", step.Service)
 	}
 
 	instances, err := pe.storage.GetService(developerAddress, serviceName, "")
 	if err != nil || len(instances) == 0 {
-		return nil, fmt.Errorf("pipeline service %s unavailable", step.Service)
+		return nil, fmt.Errorf("pipeline service %s unavailable", resolvedService)
 	}
 	instance := pe.router.PickInstance(instances)
 	originalHeaders, _ := parentCtx.Value("headers").(http.Header)
@@ -249,7 +250,7 @@ func (pe *PipelineExecutor) executeSingleStep(step model.PipelineStep, stepLog *
 			}
 		}
 
-		respData, respErr = pe.executeRESTRequest(instance.URL, step, reqHeaders, requestBodyReader, requestBodyString, stepLog)
+		respData, respErr = pe.executeRESTRequest(instance.URL, step, reqHeaders, requestBodyReader, requestBodyString, stepLog, pipelineContext)
 	} else {
 		resolvedArgs := make(map[string]interface{})
 		if step.ArgsMapping != nil {
@@ -331,6 +332,7 @@ func (pe *PipelineExecutor) resolveAmountValue(input interface{}, context map[st
 }
 
 func (pe *PipelineExecutor) executeLedgerAction(step model.PipelineStep, parentCtx context.Context, pipelineContext map[string]interface{}) error {
+	now := time.Now()
 	action := step.LedgerExecute
 	logEntry, _ := parentCtx.Value("log").(*logging.LogEntry)
 
@@ -368,14 +370,14 @@ func (pe *PipelineExecutor) executeLedgerAction(step model.PipelineStep, parentC
 	}
 
 	tx := types.Transaction{
-		ID:        fmt.Sprintf("tx-delegated-%d", time.Now().UnixNano()),
+		ID:        util.GenerateTxID("tx-delegated-", fromAddress, toAddress, amountMicro, now.UnixNano()),
 		Type:      model.DelegatedTransferTransaction,
 		From:      fromAddress,
 		To:        toAddress,
 		Amount:    amountMicro,
 		Spender:   serviceDeveloper, // Service owner is the spender
-		Timestamp: time.Now(),
-		CreatedAt: time.Now(),
+		Timestamp: now,
+		CreatedAt: now,
 	}
 
 	if _, err := pe.storage.SubmitDelegatedTransaction(parentCtx, tx); err != nil {
@@ -392,6 +394,7 @@ func (pe *PipelineExecutor) executeLedgerAction(step model.PipelineStep, parentC
 
 // New function to handle token transfers in pipelines
 func (pe *PipelineExecutor) executeTokenTransfer(action *model.LedgerExecuteAction, parentCtx context.Context, pipelineContext map[string]interface{}) error {
+	now := time.Now()
 	logEntry, _ := parentCtx.Value("log").(*logging.LogEntry)
 
 	// Resolve token address
@@ -451,15 +454,15 @@ func (pe *PipelineExecutor) executeTokenTransfer(action *model.LedgerExecuteActi
 
 	// Create token transfer transaction
 	tx := types.Transaction{
-		ID:           fmt.Sprintf("tx-token-transfer-pipeline-%d", time.Now().UnixNano()),
+		ID:           util.GenerateTxID("tx-delegated-token-", fromAddress, toAddress, amountMicro, now.UnixNano()),
 		Type:         model.TokenTransferTransaction,
 		From:         fromAddress,
 		To:           toAddress,
 		Amount:       amountMicro,
 		TokenAddress: tokenAddress,
 		Spender:      serviceDeveloper, // Track who initiated this transfer
-		Timestamp:    time.Now(),
-		CreatedAt:    time.Now(),
+		Timestamp:    now,
+		CreatedAt:    now,
 	}
 
 	// Submit through ledger
@@ -575,6 +578,7 @@ func (pe *PipelineExecutor) evaluateConditional(step model.PipelineStep, context
 }
 
 func (pe *PipelineExecutor) executeRollback(steps []model.PipelineStep, ctx context.Context, logEntry *logging.LogEntry, pipelineResult *model.ExecutionResult) {
+	now := time.Now()
 	log.Printf("ROLLBACK: Initiating rollback for %d steps for TraceID %s.", len(steps), logEntry.TraceID)
 	originalHeaders, _ := ctx.Value("headers").(http.Header)
 
@@ -587,22 +591,22 @@ func (pe *PipelineExecutor) executeRollback(steps []model.PipelineStep, ctx cont
 
 			// Create a debit transaction to take the money back from the original recipient.
 			rollbackDebitTx := types.Transaction{
-				ID:        fmt.Sprintf("tx-rollback-debit-%s", tx.ID),
+				ID:        util.GenerateTxID("tx-rollback-debit-", tx.To, "", tx.Amount, now.UnixNano()),
 				Type:      model.RollbackDebitTransaction,
 				From:      tx.To, // Debit the original recipient
 				Amount:    tx.Amount,
-				Timestamp: time.Now(),
-				CreatedAt: time.Now(),
+				Timestamp: now,
+				CreatedAt: now,
 			}
 
 			// Create a credit transaction to give the money back to the original sender.
 			rollbackCreditTx := types.Transaction{
-				ID:        fmt.Sprintf("tx-rollback-credit-%s", tx.ID),
+				ID:        util.GenerateTxID("tx-rollback-credit-", "", tx.From, tx.Amount, now.UnixNano()),
 				Type:      model.RollbackCreditTransaction,
 				To:        tx.From, // Credit the original sender
 				Amount:    tx.Amount,
-				Timestamp: time.Now(),
-				CreatedAt: time.Now(),
+				Timestamp: now,
+				CreatedAt: now,
 			}
 
 			// Submit both system transactions to the ledger.
@@ -634,7 +638,8 @@ func (pe *PipelineExecutor) executeRollbackStep(step model.PipelineStep, origina
 	stepLog := toPipelineStepLog(step)
 	stepLog.IsRollbackStep = true
 
-	developerAddress, serviceName, err := util.ParseCompositeKey(step.Service)
+	resolvedService := resolveServiceKey(step.Service, pipelineContext)
+	developerAddress, serviceName, err := util.ParseCompositeKey(resolvedService)
 	if err != nil {
 		stepLog.Error = fmt.Sprintf("Rollback failed: invalid service format '%s'", step.Service)
 		logEntry.RollbackFailure = append(logEntry.RollbackFailure, stepLog)
@@ -644,7 +649,7 @@ func (pe *PipelineExecutor) executeRollbackStep(step model.PipelineStep, origina
 
 	instances, err := pe.storage.GetService(developerAddress, serviceName, "")
 	if err != nil || len(instances) == 0 {
-		stepLog.Error = fmt.Sprintf("Rollback service %s unavailable", step.Service)
+		stepLog.Error = fmt.Sprintf("Rollback service %s unavailable", resolvedService)
 		logEntry.RollbackFailure = append(logEntry.RollbackFailure, stepLog)
 		log.Println(stepLog.Error)
 		return
@@ -659,7 +664,7 @@ func (pe *PipelineExecutor) executeRollbackStep(step model.PipelineStep, origina
 		if bodyErr != nil {
 			respErr = fmt.Errorf("failed to build rollback request body: %w", bodyErr)
 		} else {
-			_, respErr = pe.executeRESTRequest(instance.URL, step, reqHeaders, requestBodyReader, requestBodyString, &stepLog)
+			_, respErr = pe.executeRESTRequest(instance.URL, step, reqHeaders, requestBodyReader, requestBodyString, &stepLog, pipelineContext)
 		}
 	} else {
 		resolvedArgs := make(map[string]interface{})
@@ -691,7 +696,7 @@ func (pe *PipelineExecutor) createRequestSignature(body []byte) ([]byte, error) 
 	return nodeIdentity.Sign(digest[:])
 }
 
-func (pe *PipelineExecutor) executeRESTRequest(baseURL string, step model.PipelineStep, headers http.Header, requestBodyReader io.Reader, bodyStr string, stepLog *logging.PipelineStepLog) (map[string]interface{}, error) {
+func (pe *PipelineExecutor) executeRESTRequest(baseURL string, step model.PipelineStep, headers http.Header, requestBodyReader io.Reader, bodyStr string, stepLog *logging.PipelineStepLog, pipelineContext map[string]interface{}) (map[string]interface{}, error) {
 	var bodyBytes []byte
 	var body io.Reader
 	var err error
@@ -716,18 +721,22 @@ func (pe *PipelineExecutor) executeRESTRequest(baseURL string, step model.Pipeli
 	headers.Set("X-Grapthway-Node-Address", nodeIdentity.Address)
 	headers.Set("X-Grapthway-Node-Public-Key", hex.EncodeToString(crypto.FromECDSAPub(nodeIdentity.PublicKey)))
 
-	fullURL := baseURL + step.Path
+	// ✅ Interpolate $variables in path before building fullURL.
+	// Supported syntaxes (all start with $):
+	//   $request.body.field  — from the original incoming request body (stored as request.body.* in context)
+	//   $args.field          — from GraphQL variables / REST args map (stored as args.* in context)
+	//   $field               — bare context key (e.g. populated by a prior assign step, or X-Ctx-* header)
+	// Multiple injections in a single path are fully supported.
+	interpolatedPath := interpolatePathVars(step.Path, pipelineContext)
+	fullURL := baseURL + interpolatedPath
 
-	// ✅ CRITICAL: For GET requests, convert BodyMapping to query parameters
+	// ✅ CRITICAL FIX: For GET requests, convert BodyMapping to query parameters.
+	// Previously pipelineContext was re-created as an empty map here — now we use
+	// the real pipelineContext passed in by the caller.
 	if strings.ToUpper(step.Method) == "GET" && step.BodyMapping != nil && len(step.BodyMapping) > 0 {
 		parsedURL, parseErr := url.Parse(fullURL)
 		if parseErr == nil {
 			q := parsedURL.Query()
-
-			// Get context from the parent caller
-			pipelineContext := make(map[string]interface{})
-
-			// Build query params from BodyMapping
 			for paramKey, contextKey := range step.BodyMapping {
 				if val, ok := getValueFromContext(pipelineContext, contextKey); ok {
 					switch v := val.(type) {
@@ -745,11 +754,9 @@ func (pe *PipelineExecutor) executeRESTRequest(baseURL string, step model.Pipeli
 					q.Set(paramKey, contextKey)
 				}
 			}
-
 			parsedURL.RawQuery = q.Encode()
 			fullURL = parsedURL.String()
 		}
-
 		// For GET, body should be nil
 		body = nil
 		bodyStr = ""
@@ -863,6 +870,123 @@ func (pe *PipelineExecutor) executeGraphQLRequest(url, query string, headers htt
 		return &result, fmt.Errorf(result.Errors[0].Message)
 	}
 	return &result, nil
+}
+
+// interpolatePathVars replaces $-prefixed variables in a path template with
+// values resolved from pipelineContext. Supports three resolution strategies,
+// tried in order for each token:
+//
+//  1. $request.body.<field>  — resolves via dot-path "request.body.<field>"
+//     (populated by pipelinedProxy / wsPipelinedProxy from the incoming JSON body)
+//  2. $args.<field>          — resolves via dot-path "args.<field>"
+//     (GraphQL variables or REST ?query params stored under "args" key)
+//  3. $<field>               — bare context key (any assign step output, or a
+//     value that arrived as an X-Ctx-* header from a prior pipeline step)
+//
+// Multiple injections in a single path are fully supported, e.g.:
+//
+//	"/api/$storeId/store/$productId/product"
+//
+// If a token cannot be resolved it is left unchanged so the caller can detect
+// the missing value or surface it in logs.
+func interpolatePathVars(path string, ctx map[string]interface{}) string {
+	if ctx == nil || !strings.Contains(path, "$") {
+		return path
+	}
+
+	// Split on '/' and process each segment independently so we never
+	// accidentally match across segment boundaries.
+	segments := strings.Split(path, "/")
+	for i, seg := range segments {
+		if !strings.Contains(seg, "$") {
+			continue
+		}
+		// A segment may contain a $token plus surrounding static text,
+		// e.g. "prefix-$varName-suffix". Walk left-to-right.
+		result := seg
+		for {
+			dollarIdx := strings.Index(result, "$")
+			if dollarIdx == -1 {
+				break
+			}
+			// Find the end of the token: next '/' (won't occur inside a segment),
+			// '?' (query string start), '&', '=', or end of string.
+			tail := result[dollarIdx+1:]
+			endIdx := strings.IndexAny(tail, "/?&=")
+			var token string
+			if endIdx == -1 {
+				token = tail
+			} else {
+				token = tail[:endIdx]
+			}
+			if token == "" {
+				break
+			}
+
+			// Attempt resolution: try the token as a dot-path first (handles
+			// request.body.x and args.x), then as a bare top-level key.
+			var resolved string
+			var found bool
+
+			if val, ok := getValueFromContext(ctx, token); ok {
+				resolved = fmt.Sprintf("%v", val)
+				found = true
+			}
+
+			if !found {
+				// Nothing could be resolved — leave token in place and stop
+				// trying for this token to avoid infinite loop.
+				break
+			}
+
+			// Replace only the first occurrence of "$<token>" in result.
+			result = strings.Replace(result, "$"+token, resolved, 1)
+		}
+		segments[i] = result
+	}
+	return strings.Join(segments, "/")
+}
+
+// resolveServiceKey resolves $-prefixed variables in the developer-address
+// portion of a composite service key ("developerAddress:serviceName").
+//
+// Only the left-hand side of the colon is interpolated — the service name is
+// always treated as a static literal. Examples:
+//
+//	"$request.body.seller_addr:product-svc"  →  "<resolved>:product-svc"
+//	"$args.tenant_addr:order-svc"            →  "<resolved>:order-svc"
+//	"$tenantAddr:payment-svc"                →  "<resolved>:payment-svc"
+//	"0xABC123:product-svc"                   →  "0xABC123:product-svc"  (unchanged)
+//
+// If the token cannot be resolved the original string is returned unchanged so
+// the subsequent ParseCompositeKey call can produce a clear error.
+func resolveServiceKey(service string, ctx map[string]interface{}) string {
+	if ctx == nil || !strings.Contains(service, "$") {
+		return service
+	}
+	colonIdx := strings.Index(service, ":")
+	if colonIdx == -1 {
+		// No colon — not a composite key; return as-is for ParseCompositeKey to reject.
+		return service
+	}
+	addrPart := service[:colonIdx]
+	svcPart := service[colonIdx:] // includes the leading ":"
+
+	if !strings.HasPrefix(addrPart, "$") {
+		return service // developer address is already a literal
+	}
+
+	token := addrPart[1:] // strip the leading "$"
+	if token == "" {
+		return service
+	}
+
+	val, found := getValueFromContext(ctx, token)
+	if !found {
+		return service // leave unchanged; ParseCompositeKey will surface the error
+	}
+	resolved := fmt.Sprintf("%v", val)
+	return resolved + svcPart
 }
 
 func getValueFromContext(context map[string]interface{}, key string) (interface{}, bool) {

@@ -1,11 +1,11 @@
 package handler
 
 import (
-	"fmt"
 	"grapthway/pkg/dependency"
 	"grapthway/pkg/ledger/types"
 	"grapthway/pkg/logging"
 	"grapthway/pkg/model"
+	"grapthway/pkg/util"
 	"net/http"
 	"strconv"
 	"time"
@@ -15,6 +15,7 @@ import (
 
 func UserTransferHandler(deps *dependency.Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		now := time.Now()
 		fromAddress, ok := r.Context().Value("authenticatedUser").(string)
 		if !ok || fromAddress == "" {
 			http.Error(w, "Authenticated user not found in context", http.StatusInternalServerError)
@@ -35,14 +36,14 @@ func UserTransferHandler(deps *dependency.Dependencies) http.HandlerFunc {
 		amountMicro := uint64(payload.Amount * model.GCU_MICRO_UNIT)
 
 		tx := types.Transaction{
-			ID:        fmt.Sprintf("tx-%d", time.Now().UnixNano()),
+			ID:        util.GenerateTxID("tx-", fromAddress, payload.To, amountMicro, now.UnixNano()),
 			Type:      model.TransferTransaction,
 			From:      fromAddress,
 			To:        payload.To,
 			Amount:    amountMicro,
 			Nonce:     payload.Nonce,
-			Timestamp: time.Now(),
-			CreatedAt: time.Now(),
+			Timestamp: now,
+			CreatedAt: now,
 		}
 
 		processedTx, err := deps.LedgerClient.ProcessTransactionSubmission(r.Context(), tx)
@@ -52,7 +53,7 @@ func UserTransferHandler(deps *dependency.Dependencies) http.HandlerFunc {
 		}
 
 		deps.Logger.Log(logging.LogEntry{
-			Timestamp: time.Now(), LogType: logging.LedgerLog, Activity: "User Transfer",
+			Timestamp: now, LogType: logging.LedgerLog, Activity: "User Transfer",
 			User: fromAddress,
 			TransactionInfo: &logging.TransactionInfo{
 				TransactionID: processedTx.ID, Type: string(processedTx.Type), From: processedTx.From, To: processedTx.To,

@@ -29,6 +29,7 @@ import (
 	modeltoproto "grapthway/pkg/proto/converter/model-to-proto"
 	prototomodel "grapthway/pkg/proto/converter/proto-to-model"
 	"grapthway/pkg/proto/converter/utils"
+	"grapthway/pkg/util"
 
 	"github.com/dgraph-io/badger/v4"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
@@ -238,6 +239,8 @@ type Client struct {
 	txPropagationMutex          sync.RWMutex
 	currentTokenBatch           *TokenBatchOperations
 	tokenBatchMutex             sync.RWMutex
+	pendingPropagationCleanup   [][]string
+	cleanupMu                   sync.Mutex
 }
 
 func fnv32(key string) uint32 {
@@ -464,6 +467,7 @@ func (c *Client) blockProcessingWorker() {
 }
 
 func (c *Client) genesisBlockRoutine() {
+	now := time.Now()
 	time.Sleep(10 * time.Second)
 	c.metaLock.RLock()
 	height := c.lastBlockHeight
@@ -484,15 +488,18 @@ func (c *Client) genesisBlockRoutine() {
 		ownerAddress = c.node.Host.ID().String()
 	}
 
+	genesisTokenAmount := uint64(2_803_970_000_000 * model.GCU_MICRO_UNIT)
+
 	// Create the initial funding transaction
 	genesisTx := types.Transaction{
-		ID:        fmt.Sprintf("tx-genesis-%s", ownerAddress),
+		// ID:        fmt.Sprintf("tx-genesis-%s", ownerAddress),
+		ID:        util.GenerateTxID("tx-genesis-", "", ownerAddress, genesisTokenAmount, now.UnixNano()),
 		Type:      model.GenesisTransaction,
 		From:      "network",
 		To:        ownerAddress,
-		Amount:    2_803_970_000_000 * model.GCU_MICRO_UNIT,
-		Timestamp: time.Now(),
-		CreatedAt: time.Now(),
+		Amount:    genesisTokenAmount,
+		Timestamp: now,
+		CreatedAt: now,
 	}
 
 	// Manually create the initial account state to bootstrap the validator set
@@ -1440,7 +1447,6 @@ func (c *Client) handleBlockShredGossip(data []byte) {
 	if err := proto.Unmarshal(data, &shred); err != nil {
 		return
 	}
-
 	modelShred := types.BlockShred{
 		BlockHash:   shred.BlockHash,
 		TotalShreds: int(shred.TotalShreds),
@@ -1449,8 +1455,6 @@ func (c *Client) handleBlockShredGossip(data []byte) {
 	}
 
 	c.shredStoreLock.Lock()
-	defer c.shredStoreLock.Unlock()
-
 	shreds, exists := c.shredStore[modelShred.BlockHash]
 	if !exists {
 		shreds = make([]*types.BlockShred, modelShred.TotalShreds)
@@ -1459,18 +1463,24 @@ func (c *Client) handleBlockShredGossip(data []byte) {
 		shreds[modelShred.ShredIndex] = &modelShred
 	}
 	c.shredStore[modelShred.BlockHash] = shreds
+
 	receivedCount := 0
 	for _, s := range shreds {
 		if s != nil {
 			receivedCount++
 		}
 	}
+
+	var blockData []byte
 	if receivedCount == modelShred.TotalShreds {
-		var blockData []byte
 		for _, s := range shreds {
 			blockData = append(blockData, s.Data...)
 		}
 		delete(c.shredStore, modelShred.BlockHash)
+	}
+	c.shredStoreLock.Unlock() // ← release BEFORE dispatch
+
+	if blockData != nil {
 		go c.handleBlockProposal(blockData)
 	}
 }
@@ -2234,31 +2244,112 @@ func (c *Client) ProactiveReconcile() {}
 func (c *Client) handleHistoryRequestStream(stream network.Stream) { stream.Reset() }
 
 func (c *Client) listenForNetworkUpdates(txChan, reqChan, blockProposalChan, blockShredChan, preValidatedTxChan, nonceUpdateChan, preProposalChan, validatorUpdateChan <-chan *pubsub.Message) {
+	numWorkers := runtime.GOMAXPROCS(0) * 16
+	if numWorkers == 0 {
+		numWorkers = 8
+	}
+
+	// --- DEDICATED: Block shreds — highest priority, must never share a goroutine
+	// with preProposalChan. This was the primary cause of the fallback race.
+	if blockShredChan != nil {
+		for i := 0; i < numWorkers; i++ {
+			go func() {
+				for {
+					select {
+					case <-c.ctx.Done():
+						return
+					case msg, ok := <-blockShredChan:
+						if !ok {
+							return
+						}
+						if c.node.Role != "worker" {
+							c.handleBlockShredGossip(msg.Data)
+						}
+					}
+				}
+			}()
+		}
+	}
+
+	// --- DEDICATED: Pre-proposals — must drain immediately, never starved by tx volume.
+	// Separate pool ensures this is always the first thing processed after shreds.
+	if preProposalChan != nil {
+		for i := 0; i < numWorkers; i++ {
+			go func() {
+				for {
+					select {
+					case <-c.ctx.Done():
+						return
+					case msg, ok := <-preProposalChan:
+						if !ok {
+							return
+						}
+						if c.node.Role != "worker" {
+							go c.HandlePreBlockProposal(msg.Data)
+						}
+					}
+				}
+			}()
+		}
+	}
+
+	// --- POOL: Transaction gossip — high volume, benefits from full worker pool
+	if txChan != nil {
+		for i := 0; i < numWorkers; i++ {
+			go func() {
+				for {
+					select {
+					case <-c.ctx.Done():
+						return
+					case msg, ok := <-txChan:
+						if !ok {
+							return
+						}
+						go c.HandleTransactionGossip(msg.Data)
+					}
+				}
+			}()
+		}
+	}
+
+	// --- POOL: Pre-validation votes — moderate volume
+	if preValidatedTxChan != nil {
+		for i := 0; i < numWorkers; i++ {
+			go func() {
+				for {
+					select {
+					case <-c.ctx.Done():
+						return
+					case msg, ok := <-preValidatedTxChan:
+						if !ok {
+							return
+						}
+						if c.node.Role != "worker" {
+							c.handlePreValidationVoteGossip(msg.Data)
+						}
+					}
+				}
+			}()
+		}
+	}
+
+	// --- SINGLE: Low-volume control messages, ordering doesn't matter for nonces/validators
 	go func() {
 		for {
 			select {
 			case <-c.ctx.Done():
 				return
-			case msg := <-txChan:
-				c.HandleTransactionGossip(msg.Data)
-			case msg := <-blockShredChan:
-				if c.node.Role != "worker" {
-					c.handleBlockShredGossip(msg.Data)
+			case msg, ok := <-nonceUpdateChan:
+				if !ok {
+					return
 				}
-			case msg := <-preValidatedTxChan:
-				if c.node.Role != "worker" {
-					c.handlePreValidationVoteGossip(msg.Data)
-				}
-			case msg := <-nonceUpdateChan:
-				// Nonce updates can be relevant for all nodes to keep pending states accurate.
 				c.handleNonceUpdateGossip(msg.Data)
-			case msg := <-preProposalChan:
-				if c.node.Role != "worker" {
-					go c.HandlePreBlockProposal(msg.Data)
+			case msg, ok := <-validatorUpdateChan:
+				if !ok {
+					return
 				}
-			case msg := <-validatorUpdateChan:
 				if c.node.Role != "worker" {
-					c.HandleValidatorUpdate(msg.Data)
+					go c.HandleValidatorUpdate(msg.Data)
 				}
 			}
 		}
@@ -2273,26 +2364,40 @@ func (c *Client) broadcastTransaction(tx types.Transaction) {
 		return
 	}
 
+	// --- ATOMIC DEDUPLICATION ---
+	// Prevent duplicate broadcasts and double-counted propagation state at high TPS.
+	// We use a sentinel map to immediately claim the broadcast responsibility for this tx.
+	sentinel := make(map[string]time.Time)
+	if _, loaded := c.txPropagationState.LoadOrStore(tx.ID, sentinel); loaded {
+		// Another goroutine has already claimed and broadcast this transaction.
+		return
+	}
+
 	pbTx := modeltoproto.ModelToProtoTransaction(&tx)
 	txBytes, err := proto.Marshal(pbTx)
 	if err != nil {
+		// If marshaling fails, clean up the sentinel so it can potentially be retried
+		c.txPropagationState.Delete(tx.ID)
 		return
 	}
 
 	// Gossip to network
 	c.node.Gossip(p2p.LedgerTransactionTopic, txBytes)
 
-	// --- NEW: Mark transaction as propagated to all connected validators ---
+	// --- UPDATE PROPAGATION STATE ---
+	// Mark transaction as propagated to all connected validators
 	validators := c.getOnlineValidators()
 	if len(validators) > 0 {
 		peerMap := make(map[string]time.Time)
 		for _, v := range validators {
 			peerMap[v.PeerID.String()] = time.Now()
 		}
+		// Overwrite the sentinel with the actual validator map
 		c.txPropagationState.Store(tx.ID, peerMap)
 		log.Printf("TX-PROPAGATION: Marked tx %s as propagated to %d validators", tx.ID[:8], len(peerMap))
 	}
-	// --- END NEW ---
+	// Note: If no validators are online, the empty sentinel map remains stored.
+	// This correctly prevents duplicate broadcast attempts of the same transaction.
 }
 
 func (c *Client) loadMetadata() {
@@ -2941,6 +3046,9 @@ func (c *Client) processBlock(block types.Block) error {
 
 	c.inFlightTxsMutex.Lock()
 	c.recentTxMutex.Lock()
+	for id, tx := range c.inFlightTxs {
+		c.recentTransactions[id] = tx
+	}
 	c.inFlightTxs = make(map[string]types.Transaction)
 	for _, tx := range block.Transactions {
 		c.inFlightTxs[tx.ID] = tx
@@ -2954,21 +3062,33 @@ func (c *Client) processBlock(block types.Block) error {
 	var consumedTxIDs map[string]struct{}
 	var rawTxMap map[string]types.Transaction
 
-	// Poll for the pre-proposal to arrive, making the cache hit reliable.
-	for i := 0; i < 5; i++ { // Poll for up to 50ms
+	txCount := len(block.Transactions)
+	maxIter := 20
+	switch {
+	case txCount > 1000:
+		maxIter = 60
+	case txCount > 500:
+		maxIter = 40
+	case txCount > 200:
+		maxIter = 30
+	}
+	log.Printf("[CACHE-DEBUG] Block %d: polling for ProposalID=%q (maxIter=%d, txCount=%d)",
+		block.Height, block.ProposalID, maxIter, txCount)
+	for i := 0; i < maxIter; i++ {
 		if cached, ok := c.validatedProposalCache.Load(block.ProposalID); ok {
 			entry := cached.(ValidatedProposalCacheEntry)
 			batchedTxs = entry.BatchedTransactions
 			consumedTxIDs = entry.ConsumedTxIDs
 			rawTxMap = entry.RawTransactions
-			log.Printf("[PERF-LOG] STEP 1: Block %d proposal found in cache. Duration: %v", block.Height, time.Since(start))
-			goto foundInCache // Skip the fallback logic
+			log.Printf("[PERF-LOG] STEP 1: Block %d proposal found in cache (iter %d/%d). Duration: %v",
+				block.Height, i+1, maxIter, time.Since(start))
+			goto foundInCache
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 
 	log.Printf("[PERF-LOG] STEP 1 (WARN): Block %d proposal not in cache after delay, using fallback. Duration: %v", block.Height, time.Since(start))
-	if true { // Keep indentation, was previously under else
+	if true {
 		proposerID, err := peer.Decode(block.ProposerID)
 		if err != nil {
 			return fmt.Errorf("invalid proposer ID in block: %w", err)
@@ -3051,15 +3171,27 @@ foundInCache:
 		shard := c.getMempoolShard(txID)
 		shard.transactions.Delete(txID)
 	}
-	// --- NEW: Clean up propagation state for processed transactions ---
+
+	toClean := make([]string, 0, len(finalTxs)+len(consumedTxIDs))
 	for _, tx := range finalTxs {
-		c.txPropagationState.Delete(tx.ID)
+		toClean = append(toClean, tx.ID)
 	}
 	for txID := range consumedTxIDs {
-		c.txPropagationState.Delete(txID)
+		toClean = append(toClean, txID)
 	}
-	log.Printf("PERF-LOG: Cleaned up propagation state for %d transactions", len(finalTxs)+len(consumedTxIDs))
-	// --- END NEW ---
+
+	c.cleanupMu.Lock()
+	if len(c.pendingPropagationCleanup) > 0 {
+		for _, txID := range c.pendingPropagationCleanup[0] {
+			c.txPropagationState.Delete(txID)
+		}
+		c.pendingPropagationCleanup = c.pendingPropagationCleanup[1:]
+	}
+	c.pendingPropagationCleanup = append(c.pendingPropagationCleanup, toClean)
+	c.cleanupMu.Unlock()
+
+	log.Printf("PERF-LOG: Deferred propagation cleanup for %d transactions (flushed previous batch)", len(toClean))
+
 	log.Printf("[PERF-LOG] STEP 4: Mempool cleanup complete. Duration: %v", time.Since(start))
 
 	for _, tx := range finalTxs {
@@ -3413,16 +3545,54 @@ func (c *Client) fetchTransactionsWithRetry(txIDs []string, proposerID peer.ID) 
 		}
 	}
 
-	if len(missingIDs) > 0 && c.node != nil && proposerID != c.node.Host.ID() {
-		ctx, cancel := context.WithTimeout(c.ctx, 500*time.Millisecond)
-		defer cancel()
+	if len(missingIDs) > 0 && c.node != nil {
+		// Try the proposer first (increased timeout)
+		if proposerID != c.node.Host.ID() {
+			ctx, cancel := context.WithTimeout(c.ctx, 1*time.Second)
+			fetchedTxs, err := c.node.RequestMissingTxs(ctx, proposerID, missingIDs)
+			cancel()
+			if err != nil {
+				log.Printf("VALIDATOR: Failed to request %d missing txs from proposer %s: %v", len(missingIDs), proposerID, err)
+			} else {
+				for _, tx := range fetchedTxs {
+					foundMap[tx.ID] = tx
+				}
+			}
+		}
 
-		fetchedTxs, err := c.node.RequestMissingTxs(ctx, proposerID, missingIDs)
-		if err != nil {
-			log.Printf("VALIDATOR: Failed to request %d missing txs from proposer %s: %v", len(missingIDs), proposerID, err)
-		} else {
-			for _, tx := range fetchedTxs {
-				foundMap[tx.ID] = tx
+		// Rebuild still-missing list
+		stillMissing := make([]string, 0, len(txIDs))
+		for _, id := range txIDs {
+			if _, ok := foundMap[id]; !ok {
+				stillMissing = append(stillMissing, id)
+			}
+		}
+
+		// Try other validators if still missing
+		if len(stillMissing) > 0 {
+			for _, peerID := range c.node.GetPeerList() {
+				if peerID == proposerID {
+					continue
+				}
+				ctx, cancel := context.WithTimeout(c.ctx, 500*time.Millisecond)
+				fetchedTxs, err := c.node.RequestMissingTxs(ctx, peerID, stillMissing)
+				cancel()
+				if err == nil {
+					for _, tx := range fetchedTxs {
+						foundMap[tx.ID] = tx
+					}
+					// Update still-missing
+					newMissing := stillMissing[:0]
+					for _, id := range stillMissing {
+						if _, ok := foundMap[id]; !ok {
+							newMissing = append(newMissing, id)
+						}
+					}
+					stillMissing = newMissing
+				}
+				if len(stillMissing) == 0 {
+					break
+				}
 			}
 		}
 	}
@@ -3943,24 +4113,40 @@ func (c *Client) GetLiveAccountState(address string) (*types.AccountState, error
 }
 
 func (c *Client) GetLiveAccountStatesBatch(addresses []string) (map[string]*types.AccountState, error) {
-	accounts := make(map[string]*types.AccountState)
-	var wg sync.WaitGroup
+	accounts := make(map[string]*types.AccountState, len(addresses))
 	var mu sync.Mutex
 	errChan := make(chan error, len(addresses))
 
+	numWorkers := runtime.GOMAXPROCS(0) * 16
+	if numWorkers == 0 {
+		numWorkers = 8
+	}
+	if numWorkers > len(addresses) {
+		numWorkers = len(addresses)
+	}
+
+	addrChan := make(chan string, len(addresses))
 	for _, addr := range addresses {
+		addrChan <- addr
+	}
+	close(addrChan)
+
+	var wg sync.WaitGroup
+	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
-		go func(address string) {
+		go func() {
 			defer wg.Done()
-			acc, err := c.GetLiveAccountState(address)
-			if err != nil {
-				errChan <- err
-				return
+			for address := range addrChan {
+				acc, err := c.GetLiveAccountState(address)
+				if err != nil {
+					errChan <- err
+					return
+				}
+				mu.Lock()
+				accounts[address] = acc
+				mu.Unlock()
 			}
-			mu.Lock()
-			accounts[address] = acc
-			mu.Unlock()
-		}(addr)
+		}()
 	}
 
 	wg.Wait()
@@ -3971,7 +4157,6 @@ func (c *Client) GetLiveAccountStatesBatch(addresses []string) (map[string]*type
 			return nil, err
 		}
 	}
-
 	return accounts, nil
 }
 
@@ -4695,8 +4880,11 @@ func (c *Client) ensureTransactionPropagation(ctx context.Context, txIDs []strin
 	allMissingTxs := make(map[string]struct{})
 	var missingMutex sync.Mutex
 
-	concurrentQueries := 5
-	semaphore := make(chan struct{}, concurrentQueries)
+	numWorkers := runtime.GOMAXPROCS(0) * 16
+	if numWorkers == 0 {
+		numWorkers = 8
+	}
+	semaphore := make(chan struct{}, numWorkers)
 
 	var wg sync.WaitGroup
 	for _, peerID := range peers {
@@ -4796,7 +4984,15 @@ func (c *Client) pushTransactionsToPeer(ctx context.Context, peerID peer.ID, tra
 	if err != nil {
 		return
 	}
-	c.node.Gossip(p2p.LedgerTransactionTopic, batchBytes)
+
+	// Direct push to target peer (stream, not gossip broadcast)
+	pushCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if err := c.node.PushTransactionsToPeer(pushCtx, peerID, batchBytes); err != nil {
+		// Fallback to gossip if direct push fails
+		log.Printf("TX-PUSH: Direct push to %s failed (%v), falling back to gossip", peerID, err)
+		c.node.Gossip(p2p.LedgerTransactionTopic, batchBytes)
+	}
 }
 
 func (c *Client) adjustPendingSpend(address string, delta int64) {

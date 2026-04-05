@@ -1,8 +1,8 @@
-# 🚀 Grapthway Protocol v1.0
+# 🚀 Grapthway Protocol v2.0
 
 <div align="center">
 
-![Grapthway Logo](https://img.shields.io/badge/Grapthway-v1.0%20Protocol-blue?style=for-the-badge&logo=graphql)
+![Grapthway Logo](https://img.shields.io/badge/Grapthway-v2.0%20Protocol-blue?style=for-the-badge&logo=graphql)
 
 **A Sovereign Execution Protocol for Decentralized Applications**
 
@@ -11,9 +11,244 @@
 [![Docker Pulls](https://img.shields.io/docker/pulls/farisbahdlor/grapthway?style=flat-square)](https://hub.docker.com/r/farisbahdlor/grapthway-protocol)
 [![License](https://img.shields.io/github/license/Grapthway?style=flat-square)](LICENSE.md)
 
-[🎯 Quick Start](#-quick-start) • [🏗️ Architecture](#-architecture) • [💡 Core Concepts](#-core-concepts) • [📖 Documentation](#-documentation)
+[✨ What's New in v2.0](#-whats-new-in-v20) • [🎯 Quick Start](#-quick-start) • [🏗️ Architecture](#-architecture) • [💡 Core Concepts](#-core-concepts) • [📖 Documentation](#-documentation)
 
 </div>
+
+---
+
+## ✨ What's New in v2.0
+
+v2.0 is a substantial engineering release covering consensus reliability, pipeline correctness, worker routing, and developer tooling. **All v1.0 configurations, environment variables, pipeline definitions, and API endpoints are fully backward compatible** — no migration required.
+
+---
+
+### Breaking Changes
+
+**None.** This is a drop-in upgrade.
+
+---
+
+### Detailed Change Log
+
+#### 🐛 Fix — Assign Propagation to Context Header in Non-Durable REST Pipeline
+
+**File:** `pkg/pipeline/executor.go`
+
+`executeRESTRequest` internally re-declared `pipelineContext` as a new empty map, shadowing the caller's context. This caused all `BodyMapping` → query param resolution to return nothing, falling back to treating every mapped value as a static literal. The fix passes the real `pipelineContext` as an explicit parameter and removes the bogus local re-declaration. All three call sites (main step, rollback step) were updated.
+
+---
+
+#### 🐛 Fix — `ErrMissingBatchTxs` Race Condition (Block 22995-class Validator Halts)
+
+**Files:** `pkg/ledger/ledger.go`, `pkg/p2p/p2p.go`
+
+**Root cause:** Three compounding issues in the fallback block processing path (triggered when the block proposal arrives before its pre-proposal gossip is cached):
+
+1. The pre-proposal cache poll window was only 50ms (5 × 10ms). Since `HandlePreBlockProposal` runs asynchronously, a ~5ms scheduling jitter was enough to miss the cache and fall through to the expensive `validateAndRecreateBatches` fallback.
+2. `fetchTransactionsWithRetry` only pulled from the proposer with a 500ms timeout and had no fallback path to other validators.
+3. `pushTransactionsToPeer` used `Gossip()` (fire-and-forget broadcast) rather than a targeted direct stream, making propagation state tracking unreliable.
+
+**Changes:**
+- `ledger.go` — Cache poll extended from a fixed 50ms to a **dynamic window**: 200ms default (20 × 10ms), scaling up to 600ms for blocks with >1000 txs. Zero impact on the cache-hit path which exits immediately via `goto foundInCache`.
+- `ledger.go` — `fetchTransactionsWithRetry`: proposer timeout increased from 500ms to 1s; adds a fallback loop over other connected validators when the proposer pull is insufficient, rebuilding the still-missing list after each round.
+- `ledger.go` — `fetchTransactionsWithRetry` now also tries the proposer when `proposerID == c.node.Host.ID()` (self-check removed to cover single-node edge cases).
+- `p2p.go` — New libp2p protocol `/grapthway/push-txs/1.0.0` with `PushTxsProtocolID` stream handler and `PushTransactionsToPeer` direct stream method for targeted, confirmed transaction delivery.
+- `ledger.go` — `pushTransactionsToPeer` updated to use the new direct stream with gossip as a fallback, so propagation state only reflects confirmed delivery.
+
+---
+
+#### 🐛 Fix — 71% Block Fallback Rate & Unbounded Goroutine Spawning
+
+**Files:** `pkg/ledger/ledger.go`, `pkg/p2p/p2p.go`, `pkg/ledger/tokenBatch.go`
+
+**Root cause (`listenForNetworkUpdates`):** A single goroutine handled all six pubsub message types in one `select` loop. `blockShredChan` messages were processed synchronously, enqueueing the block. `blockProcessingWorker` immediately started `processBlock` and its 50ms cache poll. Meanwhile `preProposalChan` was unread in its buffer, blocked behind tx and shred processing. `processBlock` exhausted its poll window and fell through to the slow fallback before `HandlePreBlockProposal` ever ran.
+
+All worker pools scaled to `runtime.GOMAXPROCS(0) × 16` with a minimum of 8.
+
+**`ledger.go` — `listenForNetworkUpdates`:**
+Single goroutine replaced with **five independent worker pools**:
+- `blockShredChan`: `GOMAXPROCS×16` dedicated workers — shred reassembly can never block the pre-proposal reader.
+- `preProposalChan`: `GOMAXPROCS×16` dedicated workers — pre-proposals drain immediately off the wire regardless of tx gossip volume.
+- `txChan`: `GOMAXPROCS×16` dedicated workers, each message dispatched to its own goroutine via `go HandleTransactionGossip`.
+- `preValidatedTxChan`: `GOMAXPROCS×16` dedicated workers.
+- `nonceUpdateChan` + `validatorUpdateChan`: single shared goroutine (low volume, no latency requirement).
+
+**`ledger.go` — `GetLiveAccountStatesBatch`:**
+Replaced unbounded goroutine-per-address with a `GOMAXPROCS×16` worker pool. Prevents goroutine explosion on large blocks touching hundreds of unique addresses.
+
+**`ledger.go` — `ensureTransactionPropagation`:**
+Replaced hardcoded semaphore of 5 with `GOMAXPROCS×16`.
+
+**`ledger.go` — Deferred propagation cleanup & atomic deduplication:**
+Added `pendingPropagationCleanup [][]string` and `cleanupMu sync.Mutex`. Propagation state is now cleaned up at `block - 1` (deferred one block) rather than immediately, preventing races under rapid block finalization. Atomic deduplication via `txPropagationState.LoadOrStore` prevents duplicate broadcasts and double-counted state at high TPS.
+
+**`tokenBatch.go` — `ApplyTokenBatchToWriteBatch`:**
+Six write sections (token creates, token updates, ownership records, absolute balances, allowances+deletes, history entries) now run as concurrent goroutines under `sync.WaitGroup`. The balance delta loop runs sequentially after the parallel phase (since deltas depend on absolute balances written in that phase), but the delta loop itself is also parallelized via a `GOMAXPROCS×16` worker pool.
+
+**`p2p.go` — `SynchronizeMempool`, `RequestMissingTx`, `RequestChainTipQuorum`:**
+All three replaced unbounded goroutine-per-peer with `GOMAXPROCS×16` worker pools. `RequestMissingTx` checks `queryCtx.Done()` before pulling each peer, preserving the scatter-gather early-exit semantic.
+
+---
+
+#### 🐛 Fix — Proposal Cache Miss Due to Missing `ProposalID` in Block Converter
+
+**File:** `pkg/proto/converter/proto-to-model/block.go`
+
+`ProposalID` was not mapped from the protobuf block to the model block in the proto-to-model converter. This caused `processBlock` to look up the cache with an empty key, always missing. One line added: `ProposalID: p.ProposalId`.
+
+---
+
+#### ✨ New — Deterministic Transaction IDs (`pkg/util/generateTxID.go`)
+
+v1.0 used simple string concatenation for transaction IDs (`tx-genesis-<address>`, `tx-delegated-<unixNano>`). v2.0 introduces a SHA-256-based deterministic ID function:
+
+```go
+func GenerateTxID(prefix, sender, receiver string, amount uint64, timestampNano int64) string
+// Returns: "<prefix><sha256(all fields)[:16 bytes hex]>"
+```
+
+Applied to all transaction sites: genesis allocation, delegated GCU transfers, delegated token transfers, rollback debit/credit. The `now` timestamp is now computed once per transaction and reused across `ID`, `Timestamp`, and `CreatedAt` fields, eliminating clock skew from repeated `time.Now()` calls.
+
+---
+
+#### ✨ New — Dynamic Path Variable Interpolation for REST Steps
+
+**Files:** `pkg/pipeline/executor.go`, `pkg/workflow/worker.go`
+
+Added `interpolatePathVars(path, ctx)` to both the pipeline executor and workflow worker. Replaces `$`-prefixed tokens in `step.Path` with values resolved from the pipeline context before building the request URL.
+
+Supported syntaxes (multiple injections per path are supported):
+```
+$request.body.<field>  — from the original incoming request body
+$args.<field>          — from GraphQL variables or REST query params
+$<field>               — any bare context key from a prior assign step
+```
+
+Examples:
+```
+/api/$request.body.productId/product
+/api/jobs/$jobId/logs
+/api/$args.storeId/store/$args.productId/product
+```
+
+---
+
+#### 🐛 Fix — GET Query Param Context Always Empty in `executeRESTRequest`
+
+**File:** `pkg/pipeline/executor.go`
+
+`executeRESTRequest` internally re-declared `pipelineContext` as a new empty map, shadowing the caller's context. This made GET `BodyMapping` → query param conversion always resolve nothing. Fixed by adding `pipelineContext` as an explicit parameter and removing the local re-declaration.
+
+---
+
+#### ✨ New — `request.body` and `args` Exposed in Pipeline Context for All Transports
+
+**File:** `pkg/gateway/handler.go`
+
+Ensures `$request.body.<field>` and `$args.<field>` resolve correctly across all three gateway entry points:
+
+**REST `pipelinedProxy`:** Query params mirrored into both `"query"` and `"args"`. JSON body fields also placed into `"args"` when no query string is present.
+
+**WebSocket `wsPipelinedProxy`:** Query params mirrored into both `"query"` and `"args"`.
+
+**GraphQL Middleware:** `requestBody.Variables` now also exposed under `"request.body"` alongside the existing `"args"` key.
+
+---
+
+#### 🐛 Fix — Durable Workflow Assign Dot-Path Traversal Was Broken
+
+**File:** `pkg/workflow/worker.go`
+
+The assign loop in `ProcessDurableStep` only tried `stepResult[resKey]` (root) and one level of GraphQL envelope unwrap. Full dot-path traversal (e.g. `"data.product.id"`) silently dropped values in durable flows while working correctly in non-durable. Replaced with a three-priority resolution chain:
+1. Root key lookup: `stepResult[resKey]`
+2. Full dot-path: `getValueFromContext(stepResult, resKey)`
+3. GraphQL envelope unwrap: unwrap `stepResult[step.Field]` then dot-path inside.
+
+---
+
+#### 🐛 Fix — GraphQL Operation Type Detection Too Narrow
+
+**File:** `pkg/workflow/worker.go`
+
+`executeGraphQLStep` heuristic only detected `"create"`, `"update"`, `"delete"` as mutations. Added `"insert"`, `"upsert"`, `"remove"`. Also honours `step.Method = "mutation"` as an explicit override alias so auto-detection can be bypassed.
+
+---
+
+#### ✨ New — Dynamic Developer Address Resolution in Service Key
+
+**Files:** `pkg/pipeline/executor.go`, `pkg/workflow/worker.go`
+
+Added `resolveServiceKey(service, ctx)` to both files. Resolves a `$`-prefixed variable in the developer-address portion of a composite service key before `ParseCompositeKey`. The service name (right of colon) is always a static literal.
+
+Examples:
+```
+$request.body.seller_addr:product-svc  →  <resolved>:product-svc
+$args.tenant_addr:order-svc            →  <resolved>:order-svc
+```
+
+Applied to all 4 `ParseCompositeKey` call sites across both files.
+
+---
+
+#### ✨ New — PATCH Method Support & Enhanced Route/Pipeline Matching
+
+**File:** `pkg/gateway/handler.go`
+
+- `PATCH` added to allowed HTTP methods in the REST proxy handler.
+- **`matchRoutePattern`:** Segments starting with `:` in a registered pattern are treated as wildcards. `GET /api/admin/tiers/abc-123` matches pattern `GET /api/admin/tiers/:tier_id`.
+- **`matchPipeline`:** Three-pass priority matching:
+  1. Exact match (highest priority)
+  2. Parameterised pattern match (`:segment` wildcards, longest pattern wins)
+  3. Prefix match (retained for backward compat)
+
+---
+
+#### ✨ New — WebSocket Upgrade Compatibility for REST Proxy with Pre-Pipeline Support
+
+**File:** `pkg/gateway/handler.go`
+
+Added a fully pipeline-aware WebSocket upgrade path (`wsPipelinedProxy`). When `websocket.IsWebSocketUpgrade(r)` is detected on a pipelined REST route, the request routes to `wsPipelinedProxy` instead of `pipelinedProxy`. This ensures:
+- The service's registered pre-pipeline (auth, billing) still runs on WebSocket connections.
+- `?token=<jwt>` is promoted to the `Authorization` header before the pre-pipeline runs (browsers cannot set `Authorization` on a WebSocket upgrade handshake).
+- Proxying uses `httputil.ReverseProxy` (supports `http.Hijacker`) rather than `http.NewRequest + http.Client` (which cannot complete a WebSocket handshake).
+- `LoggingResponseWriter` gains a `Hijack()` method to forward hijacking to the underlying `ResponseWriter`.
+
+---
+
+#### ✨ New — Durable Workflow Steps Route Through Gateway (Pre-Pipeline Intact)
+
+**File:** `pkg/workflow/worker.go`
+
+`executeRESTStep` and `executeGraphQLStep` previously called upstream services directly, bypassing the gateway. v2.0 routes all durable workflow steps through a gateway node, ensuring:
+1. The service's registered pre-pipeline (auth, billing) runs for durable steps — identical behaviour to non-durable pipeline calls.
+2. The gateway's rate-limiting and middleware chain applies.
+3. The request signature comes from a known gateway node, so downstream `GrapthwayMiddleware` accepts it.
+
+A shared `pickGatewayInstance()` helper (up to 5 retries, internal/empty subgraph fallback) replaces the duplicated service discovery loops that previously existed in `executeCallWorkflowStep`, `executeRESTStep`, and `executeGraphQLStep`.
+
+**REST routing URL pattern:** `{gatewayURL}/{developerAddress}/{servicePath}/{stepPath}`
+**GraphQL routing URL pattern:** `{gatewayURL}/{developerAddress}/{subgraphName}/graphql`
+
+---
+
+#### ✨ New — Official Go & JavaScript SDKs (`sdk/`)
+
+v2.0 ships the first official SDK release.
+
+**Go SDK** (`sdk/golang/`):
+- Multi-node support with automatic latency-based routing
+- Automatic failover with exponential backoff (3 retries: 1s / 2s / 4s)
+- Thread-safe `AccountManager` (`sync.RWMutex`)
+- `NodePoolManager` with 30-second health check cycle
+- Full API coverage: wallet, transfer, tokens, staking, allowances, workflows, logs
+- HTTP middleware for downstream service request verification
+
+**JavaScript/TypeScript SDK** (`sdk/javascript/`):
+- Same multi-node failover logic as Go SDK
+- Zustand-based account management (React-compatible store)
+- Express middleware for request signing verification
+- TypeScript types included (`grapthway-config.ts`, `grapthway-client-service.ts`)
 
 ---
 
@@ -21,9 +256,9 @@
 
 Grapthway is a **fully decentralized protocol** designed to manage, secure, and orchestrate communication between microservices. It eliminates the false choice between Web2 performance and Web3 sovereignty by combining:
 
-- **Decentralized Orchestration**: Define complex, multi-step workflows in simple JSON that coordinate calls across GraphQL and REST services
-- **Durable Workflows**: Execute long-running, asynchronous processes with guaranteed completion and automatic failure recovery
-- **Incentivized Economic Layer**: A built-in, high-performance ledger with the **Grapthway Compute Unit (GCU)** token that creates a sustainable economy
+- **Decentralized Orchestration** — Define complex, multi-step workflows in simple JSON that coordinate calls across GraphQL and REST services
+- **Durable Workflows** — Execute long-running, asynchronous processes with guaranteed completion and automatic failure recovery
+- **Incentivized Economic Layer** — A built-in, high-performance ledger with the **Grapthway Compute Unit (GCU)** token that creates a sustainable economy
 
 Instead of relying on centralized databases or message brokers, Grapthway leverages a **peer-to-peer network** built on libp2p to create a resilient, scalable, and self-sustaining ecosystem.
 
@@ -31,11 +266,7 @@ Instead of relying on centralized databases or message brokers, Grapthway levera
 
 ## 🏗️ Architecture
 
-Grapthway operates as a **hybrid Layer 1 protocol** where:
-- A purpose-built L1 blockchain handles **economic settlement, token operations, and network security**
-- Complex application logic runs on the highly scalable **off-chain Sovereign Execution Layer**
-
-This separation allows Web2-level performance while maintaining Web3 sovereignty.
+Grapthway operates as a **hybrid Layer 1 protocol** where a purpose-built L1 blockchain handles economic settlement, token operations, and network security, while complex application logic runs on the highly scalable off-chain Sovereign Execution Layer.
 
 ### High-Level System Architecture
 
@@ -44,62 +275,45 @@ graph TD
     Client[Client Request] --> Server[Server Node]
     Server --> Pipeline{Pipeline Executor}
 
-    Pipeline -->|Sync| Proxy[Proxy to Service]
+    Pipeline -->|Sync REST/GraphQL| Proxy[Proxy to Service]
     Proxy --> Response[Compose Response]
     Response --> Client
 
+    Pipeline -->|WebSocket Upgrade v2.0| WSProxy[WS Pipeline Proxy]
+    WSProxy --> Downstream[Downstream WS Service]
+
     Pipeline -->|Async| Workflow[Durable Workflow]
-    Workflow --> Gossip[Gossip Network]
+    Workflow -->|Routes via Gateway v2.0| Server
 
     subgraph P2P[P2P Network - libp2p]
         GossipBus[GossipSub Protocol]
         DHT[Kademlia DHT]
-        Streams[Direct Streams]
+        PushTxs[Push-Txs Stream v2.0]
     end
 
-    subgraph Nodes[Node Types]
-        S1[Server Node]
-        W1[Worker Node]
+    subgraph WorkerPools[Independent Worker Pools v2.0]
+        ShredPool[Block Shreds Pool GOMAXPROCS×16]
+        PrePropPool[Pre-Proposal Pool GOMAXPROCS×16]
+        TxPool[Tx Gossip Pool GOMAXPROCS×16]
     end
 
-    Gossip --> GossipBus
-    GossipBus --> S1
-    GossipBus --> W1
-
-    S1 <--> DHT
-    W1 <--> DHT
-
-    W1 -->|Claim Task| Streams
-    Streams --> S1
-    S1 -->|Execute Step| W1
-
-    S1 --> Ledger[High-Performance Ledger]
+    GossipBus --> ShredPool & PrePropPool & TxPool
+    Server --> Ledger[High-Performance Ledger]
+    Server -->|Direct Push v2.0| PushTxs
     Ledger --> Consensus[PoS Consensus]
 ```
 
 ### Node Roles
 
-Grapthway nodes can operate in two distinct roles:
+**Server Nodes (`server`)** — Public-facing entry points for API requests, execute synchronous orchestration pipelines, act as coordinators for durable workflows, participate in economic layer and consensus.
 
-**Server Nodes (`server`)**
-- Public-facing entry points for API requests
-- Execute synchronous orchestration pipelines
-- Act as coordinators for durable workflows
-- Participate in economic layer and consensus
-
-**Worker Nodes (`worker`)**
-- Headless background processors
-- Execute steps of long-running workflows
-- Do not expose public API
-- Essential for asynchronous capabilities
+**Worker Nodes (`worker`)** — Headless background processors. In v2.0, execute durable workflow steps by routing through a gateway node so pre-pipelines run identically to non-durable calls.
 
 ---
 
 ## 💡 Core Concepts
 
 ### 1. Decentralized Orchestration
-
-Define how services interact using declarative JSON configurations. Grapthway handles authentication, data enrichment, and distributed transactions without writing custom code.
 
 ```json
 {
@@ -108,11 +322,7 @@ Define how services interact using declarative JSON configurations. Grapthway ha
   "type": "graphql",
   "middlewareMap": {
     "getProduct": {
-      "pre": [{
-        "service": "auth-service",
-        "field": "validateSession",
-        "onError": { "stop": true }
-      }]
+      "pre": [{ "service": "auth-service", "field": "validateSession", "onError": { "stop": true } }]
     }
   }
 }
@@ -120,51 +330,46 @@ Define how services interact using declarative JSON configurations. Grapthway ha
 
 ### 2. Durable Workflows
 
-Long-running processes that survive node failures through automatic checkpointing and recovery:
+In v2.0, every workflow step routes through the gateway — auth and billing pre-pipelines run for durable steps exactly as they do for non-durable calls.
 
 ```json
 {
-  "service": "orchestration-service",
-  "type": "graphql",
-  "middlewareMap": {
-    "order.fulfillment.workflow": {
-      "isWorkflow": true,
-      "isDurable": true,
-      "pre": [
-        {
-          "service": "payment-api",
-          "method": "POST",
-          "path": "/charge",
-          "retryPolicy": { "attempts": 3, "delaySeconds": 60 }
-        },
-        {
-          "service": "inventory-service",
-          "field": "reserveItems",
-          "onError": { "stop": true }
-        }
-      ]
-    }
+  "order.fulfillment.workflow": {
+    "isWorkflow": true,
+    "isDurable": true,
+    "pre": [
+      { "service": "payment-api", "method": "POST", "path": "/charge", "retryPolicy": { "attempts": 3, "delaySeconds": 60 } },
+      { "service": "inventory-service", "field": "reserveItems", "onError": { "stop": true } }
+    ]
   }
 }
 ```
 
-### 3. Economic Layer
+### 3. Dynamic Path Interpolation (v2.0)
 
-The **GCU token** powers all network operations:
-- Developers pay for compute resources
-- Node operators earn rewards for infrastructure
-- Secured by Proof-of-Stake consensus
+REST step paths support `$`-variable injection at runtime:
+
+```json
+{ "service": "inventory-api", "method": "GET", "path": "/api/$args.storeId/products/$args.productId" }
+```
+
+```json
+{ "service": "$request.body.tenant_addr:product-service", "method": "PATCH", "path": "/api/tiers/:id" }
+```
+
+### 4. Economic Layer
+
+The **GCU token** powers all network operations.
 
 **Staking Requirements**: `Required Stake = CPU Cores × 100 GCU`
 
-### 4. P2P Architecture
+### 5. P2P Architecture
 
-Built on libp2p with no central points of failure:
-
-- **GossipSub**: State updates and task announcements propagate through the network
-- **Kademlia DHT**: Decentralized storage for service configs and workflow state
-- **Stake-Based Handshake**: Prevents under-provisioned or malicious nodes from joining
-- **Direct Streams**: Fast consensus messaging between validators
+- **GossipSub** — State updates and task announcements
+- **Kademlia DHT** — Decentralized config and workflow state storage
+- **Stake-Based Handshake** — Prevents Sybil attacks
+- **Direct Streams** — Fast consensus messaging
+- **Push-Txs Stream** *(v2.0)* — Confirmed direct transaction delivery between peers
 
 ---
 
@@ -176,111 +381,109 @@ Built on libp2p with no central points of failure:
 
 ### Step 1: Create Node Wallets
 
-Start a temporary node to create wallets for your network:
-
 ```bash
-# Start temporary node
-docker run -d -p 5000:5000 --name grapthway-temp \
-  farisbahdlor/grapthway:decentralized-v1.0
-
-# Create wallet
+docker run -d -p 5000:5000 --name grapthway-temp farisbahdlor/grapthway-protocol-protocol:v2.0
 curl -X POST http://localhost:5000/admin/wallet/create
-
-# Save the privateKey securely!
-# Repeat for each node you plan to run
-
-# Cleanup
+# Save the privateKey! Repeat for each node.
 docker stop grapthway-temp && docker rm grapthway-temp
 ```
 
-### Step 2: Create docker-compose.yml
+### Step 2: Create `docker-compose.yml`
 
 ```yaml
 version: '3.8'
-
 services:
   grapthway-node-1:
-    image: farisbahdlor/grapthway:decentralized-v1.0
-    container_name: grapthway-node-1
-    ports:
-      - "5001:5000"
-      - "40951:40949"
+    image: farisbahdlor/grapthway-protocol:v2.0
+    ports: ["5001:5000", "40951:40949"]
     environment:
       - PORT=5000
       - P2P_PORT=40949
+      - GRAPTHWAY_ROLE=server
       - NODE_OPERATOR_PRIVATE_KEY=YOUR_NODE_1_PRIVATE_KEY
-    volumes:
-      - ./data/node-1:/data
+    volumes: ["./data/node-1:/data"]
     networks:
       grapthway-net:
         ipv4_address: 172.20.0.10
 
   grapthway-node-2:
-    image: farisbahdlor/grapthway:decentralized-v1.0
-    container_name: grapthway-node-2
-    ports:
-      - "5002:5000"
-      - "40952:40949"
+    image: farisbahdlor/grapthway-protocol:v2.0
+    ports: ["5002:5000", "40952:40949"]
     environment:
       - PORT=5000
       - P2P_PORT=40949
+      - GRAPTHWAY_ROLE=server
       - NODE_OPERATOR_PRIVATE_KEY=YOUR_NODE_2_PRIVATE_KEY
       - BOOTSTRAP_PEERS=/ip4/172.20.0.10/tcp/40949/p2p/NODE_1_PEER_ID
-    volumes:
-      - ./data/node-2:/data
-    depends_on:
-      - grapthway-node-1
-    networks:
-      grapthway-net:
+    volumes: ["./data/node-2:/data"]
+    depends_on: [grapthway-node-1]
+    networks: [grapthway-net]
 
   grapthway-worker-1:
-    image: farisbahdlor/grapthway:decentralized-v1.0
-    container_name: grapthway-worker-1
+    image: farisbahdlor/grapthway-protocol:v2.0
     environment:
       - GRAPTHWAY_ROLE=worker
       - P2P_PORT=40949
-      - NODE_OPERATOR_PRIVATE_KEY=YOUR_WORKER_1_PRIVATE_KEY
+      - NODE_OPERATOR_PRIVATE_KEY=YOUR_WORKER_PRIVATE_KEY
       - BOOTSTRAP_PEERS=/ip4/172.20.0.10/tcp/40949/p2p/NODE_1_PEER_ID
-    volumes:
-      - ./data/worker-1:/data
-    depends_on:
-      - grapthway-node-1
-    networks:
-      grapthway-net:
+    volumes: ["./data/worker-1:/data"]
+    depends_on: [grapthway-node-1]
+    networks: [grapthway-net]
 
 networks:
   grapthway-net:
     driver: bridge
     ipam:
-      config:
-        - subnet: 172.20.0.0/16
+      config: [{subnet: 172.20.0.0/16}]
 ```
 
-### Step 3: Launch Network
+### Step 3: Launch
 
 ```bash
-# Start first node
 docker-compose up -d grapthway-node-1
-
-# Get Peer ID from logs
-docker logs grapthway-node-1
-# Look for: "P2P Node started with ID: 12D3Koo..."
-
-# Update BOOTSTRAP_PEERS in docker-compose.yml with the Peer ID
-
-# Launch full network
+docker logs grapthway-node-1  # copy the Peer ID
+# Update BOOTSTRAP_PEERS, then:
 docker-compose up -d
 ```
 
-### Step 4: Verify Network
+### Step 4: Verify
 
 ```bash
-# Check node status
 curl http://localhost:5001/admin/gateway-status
-
-# View hardware stats
 curl http://localhost:5001/admin/hardware-stats
 ```
+
+---
+
+## 📦 Publishing a Service Config
+
+### JavaScript SDK (v2.0)
+
+```javascript
+import GrapthwayClient from './sdk/javascript/grapthway-client.js';
+const client = new GrapthwayClient({
+  nodeUrls: ['http://localhost:5001', 'http://localhost:5002'],
+  privateKey: 'your_developer_private_key_hex'
+});
+await client.publishConfig({
+  service: "my-service", url: "http://my-service:8000",
+  schema: "type Query { hello: String }", type: "graphql", middlewareMap: {}
+});
+```
+
+### Go SDK (v2.0)
+
+```go
+client, _ := grapthway.NewGrapthwayClient(&grapthway.ClientConfig{
+  NodeURLs:   []string{"http://localhost:5001", "http://localhost:5002"},
+  PrivateKey: "your_developer_private_key_hex",
+})
+client.PublishConfig(map[string]interface{}{
+  "service": "my-service", "url": "http://my-service:8000", "type": "graphql",
+})
+```
+
+Services are accessed at: `POST /{developer_wallet_address}/{service_name}/graphql`
 
 ---
 
@@ -288,32 +491,16 @@ curl http://localhost:5001/admin/hardware-stats
 
 ### Transactional Pipelines with Rollbacks
 
-Ensure data consistency across microservices with automatic compensating actions:
-
 ```json
 {
   "createUser": {
     "pre": [
       {
-        "service": "user-db-service",
-        "field": "insertUser",
+        "service": "user-db-service", "field": "insertUser",
         "assign": { "newUser": "" },
-        "onError": {
-          "stop": true,
-          "rollback": [{
-            "service": "user-db-service",
-            "field": "deleteUserById",
-            "argsMapping": { "id": "newUser.id" }
-          }]
-        }
+        "onError": { "stop": true, "rollback": [{ "service": "user-db-service", "field": "deleteUserById", "argsMapping": { "id": "newUser.id" } }] }
       },
-      {
-        "service": "email-api-service",
-        "method": "POST",
-        "path": "/send-welcome-email",
-        "bodyMapping": { "email": "newUser.email" },
-        "onError": { "stop": true }
-      }
+      { "service": "email-api-service", "method": "POST", "path": "/send-welcome-email", "bodyMapping": { "email": "newUser.email" }, "onError": { "stop": true } }
     ]
   }
 }
@@ -321,88 +508,30 @@ Ensure data consistency across microservices with automatic compensating actions
 
 ### Conditional Execution
 
-Execute steps based on runtime context:
-
 ```json
-{
-  "service": "audit-log-service",
-  "method": "POST",
-  "path": "/log-admin-action",
-  "conditional": "user.role == 'admin'",
-  "bodyMapping": {
-    "action": "Product Deletion",
-    "productId": "args.productId"
-  }
-}
-```
-
-### Delegated Transactions
-
-Enable automated, secure micropayments:
-
-```json
-{
-  "ledgerExecute": {
-    "from": "args.payerAddress",
-    "to": "context.developerAddress",
-    "amount": 1000
-  },
-  "onError": { "stop": true }
-}
+{ "service": "audit-log-service", "method": "POST", "path": "/log-admin-action", "conditional": "user.role == 'admin'" }
 ```
 
 ### Built-in Token System
 
-Production-grade, on-chain token operations:
-
-- **TOKEN_CREATE**: Create custom tokens with configurable economics
-- **TOKEN_TRANSFER**: Transfer tokens between addresses
-- **TOKEN_APPROVE/REVOKE**: ERC-20-like allowance system
-- **TOKEN_MINT/BURN**: Dynamic supply management
-- **TOKEN_LOCK**: Permanently lock token configuration
+TOKEN_CREATE, TOKEN_TRANSFER, TOKEN_APPROVE/REVOKE, TOKEN_MINT/BURN, TOKEN_LOCK
 
 ---
 
 ## 📊 Performance & Scalability
 
-### Measured Performance
-
-On a modest 3-node cluster (2 vCPUs, 2GB RAM per node):
-- **~500 TPS** (token transfers)
-- **~1000 OPS** (including aggregated operations)
-- **~500 ops/second/core** processing capacity
-
-### Scalability Architecture
-
-**Vertical Scalability**
-- Parallelized block production pipeline
-- Multi-core optimized transaction processing
-- Scales linearly with CPU cores
-
-**Horizontal Scalability**
-- Byzantine Fault Tolerant (BFT) consensus
-- Tolerates `f` failures where `N = 3f + 1`
-- Self-healing P2P topology
+On a modest 3-node cluster (2 vCPUs, 2GB RAM per node): ~500 TPS (token transfers), ~1000 OPS (aggregated operations). The v2.0 independent gossip worker pools and parallel `tokenBatch` writes are expected to significantly increase peak TPS under burst loads compared to v1.0.
 
 ---
 
 ## 🔒 Security Model
 
-### Zero-Trust Architecture
+- **No Bearer Tokens** — All actions authorized by cryptographic signatures
+- **ECDSA secp256k1** — Industry-standard signature verification
+- **Stake-Based Admission** — Prevents Sybil attacks
+- **Content-Addressed Storage** — Tamper-proof configurations
 
-- **No Bearer Tokens**: All actions authorized by cryptographic signatures
-- **ECDSA secp256k1**: Industry-standard signature verification
-- **Stake-Based Admission**: Prevents Sybil attacks
-- **Content-Addressed Storage**: Tamper-proof configurations
-
-### Node Identity
-
-A single private key (`NODE_OPERATOR_PRIVATE_KEY`) controls:
-- P2P network identity (libp2p Peer ID)
-- Economic wallet (staking and rewards)
-- Administrative access
-
-**⚠️ Critical**: Store private keys securely. Never commit to source control.
+> ⚠️ Store private keys securely. Never commit to source control.
 
 ---
 
@@ -414,148 +543,74 @@ A single private key (`NODE_OPERATOR_PRIVATE_KEY`) controls:
 | `PORT` | Public API port (server nodes only) | `5000` |
 | `P2P_PORT` | libp2p network communication port | `40949` |
 | `NODE_OPERATOR_PRIVATE_KEY` | Hex-encoded private key for node identity | Generated |
-| `BOOTSTRAP_PEERS` | Comma-separated multiaddresses of bootstrap nodes | - |
+| `BOOTSTRAP_PEERS` | Comma-separated multiaddresses of bootstrap nodes | — |
 | `LOG_RETENTION_DAYS` | Days to retain historical logs | `7` |
+| `TLS_ENABLED` | Enable automatic HTTPS via Let's Encrypt | `false` |
+| `TLS_DOMAINS` | Comma-separated domains for SSL certificate | — |
+| `TLS_EMAIL` | Email for Let's Encrypt notifications | — |
+| `TLS_CERT_DIR` | Directory to store SSL certificates | `/data/certs` |
+| `TLS_STAGING` | Use Let's Encrypt staging server | `false` |
+| `HTTPS_PORT` | HTTPS listen port | `443` |
+| `HTTP_PORT` | HTTP listen port | `80` |
 
 ---
 
 ## 📈 Observability
 
-### Admin Dashboard
-
-Access at `http://localhost:5000/admin`
-
-**Features:**
-- Live log streaming (WebSocket)
-- Hardware monitoring (local and network-wide)
-- Workflow execution tracking
-- Ledger transaction explorer
-- P2P network topology visualization
-
-### Log Types
-
-- **Gateway Logs**: Full API request/response lifecycle
-- **Ledger Logs**: Economic activity audit trail
-- **Admin Logs**: Administrative action records
-- **Live Logs**: Real-time system events
-
-### API Endpoints
+Access Admin Dashboard at `http://localhost:5000/admin`: live log streaming, hardware monitoring, workflow tracking, ledger explorer, P2P topology.
 
 ```bash
-# Network status
-GET /admin/gateway-status
-
-# Hardware statistics
-GET /admin/hardware-stats
-
-# Registered services
-GET /admin/services
-
-# Workflow monitoring
-GET /admin/workflows/monitoring
-
-# Historical logs
-GET /admin/logs/{type}?start={timestamp}&end={timestamp}
+GET /admin/gateway-status       # Network status
+GET /admin/hardware-stats       # Hardware utilization
+GET /admin/services             # Registered services
+GET /admin/workflows/monitoring # Durable workflow states
+GET /admin/logs/{type}          # Historical logs
 ```
 
 ---
 
-## 👨‍💻 Developer Workflow
+## 📦 SDK Quick Reference (v2.0)
 
-### 1. Create Developer Wallet
-
-Request wallet creation from any node operator:
-
-```bash
-# Create wallet address or using our html admin dashboard
-curl -X POST http://localhost:5001/admin/wallet/create
+```go
+// Go SDK
+client, _ := grapthway.NewGrapthwayClient(&grapthway.ClientConfig{
+  NodeURLs:   []string{"http://node1:5000", "http://node2:5000"},
+  PrivateKey: os.Getenv("GRAPTHWAY_PRIVATE_KEY"),
+})
+balance, _ := client.GetBalance(address)
+tx, _       := client.Transfer("0xRecipient", 10.0)
 ```
-
-### 2. Fund Account with GCU
-
-Ensure sufficient balance for API operations:
-
-```bash
-# Transfer GCU to developer address or using our html admin dashboard
-curl -X POST http://localhost:5001/ledger/transfer
-```
-
-### 3. Sign and Publish Service Configuration
-
-Use the Grapthway JS Client for canonical signing:
 
 ```javascript
-import { grapthwayClient } from './grapthway-client.js';
-
-const config = {
-  service: "my-service",
-  schema: "type Query { hello: String }",
-  type: "graphql",
-  middlewareMap: {}
-};
-
-const { canonicalJson, signature } = grapthwayClient.signConfig(config);
-await grapthwayClient.publish(canonicalJson, signature, "my-service");
+// JavaScript SDK
+const client = new GrapthwayClient({
+  nodeUrls: ['http://node1:5000', 'http://node2:5000'],
+  privateKey: process.env.GRAPTHWAY_PRIVATE_KEY
+});
+const balance = await client.getBalance(address);
+const tx = await client.transfer('0xRecipient', 10);
 ```
 
-### 4. Access Service
-
-Services are namespaced by developer wallet:
-
-```bash
-POST /{developer_address}/{service}/graphql
-```
+**Service Verification Middleware** — both SDKs ship middleware that verifies incoming requests come from authorized Grapthway nodes only. See `sdk/golang/readme.md` and `sdk/javascript/readme.md` for full examples.
 
 ---
 
-## 🌍 Use Cases
+## 🔄 Migrating from v1.0
 
-### API Monetization Platform
-- Register REST/GraphQL APIs with automatic metering
-- Users pay per-request in GCU or custom tokens
-- Built-in authentication and rate limiting
+No migration required. Replace the Docker image tag:
 
-### Multi-Service Orchestration
-- Coordinate payment processing, AI inference, and data storage
-- Automatic rollback on failures
-- Fault-tolerant workflow execution
-
-### Token-Gated Access
-- Require minimum token balance for API access
-- Useful for membership platforms and premium content
-- DAO governance integration
-
-### Decentralized Finance (DeFi)
-- Custom tokens with configurable burn/mint mechanics
-- Automated trading bots using allowances
-- Lending protocols with workflow-based liquidation
-
-### Real World Assets (RWA)
-- Tokenize physical goods
-- Track custody transfers with workflows
-- Immutable provenance chain
-
----
-
-## 🔄 High Availability
-
-### Automatic Workflow Recovery
-
-When a coordinator node fails:
-
-1. **Detection**: Worker detects unreachable coordinator
-2. **State Retrieval**: Worker queries DHT for last checkpoint
-3. **Recovery Proposal**: Worker broadcasts takeover proposal
-4. **Consensus**: Other servers verify and approve
-5. **Takeover**: New coordinator resumes workflow
-
-**Result**: Zero data loss, automatic recovery without manual intervention
+```yaml
+# Before
+image: farisbahdlor/grapthway-protocol:decentralized-v1.0
+# After
+image: farisbahdlor/grapthway-protocol:v2.0
+```
 
 ---
 
 ## 🚀 Production Deployment
 
-### Kubernetes Recommended
+### Kubernetes
 
 ```yaml
 apiVersion: apps/v1
@@ -564,17 +619,11 @@ metadata:
   name: grapthway-server
 spec:
   replicas: 3
-  selector:
-    matchLabels:
-      app: grapthway-server
   template:
-    metadata:
-      labels:
-        app: grapthway-server
     spec:
       containers:
       - name: grapthway
-        image: farisbahdlor/grapthway:decentralized-v1.0
+        image: farisbahdlor/grapthway-protocol:v2.0
         env:
         - name: GRAPTHWAY_ROLE
           value: "server"
@@ -599,101 +648,39 @@ spec:
 
 ### Best Practices
 
-- **Use Ingress Controller**: Handle TLS termination (NGINX, Traefik)
-- **Separate Deployments**: Scale server and worker nodes independently
-- **Network Policies**: Restrict downstream service access to Grapthway pods only
-- **Persistent Volumes**: Mount `/data` for ledger persistence
-- **Secret Management**: Store private keys in Kubernetes Secrets or Vault
-- **Monitoring**: Integrate with Prometheus/Grafana
+- Use Ingress Controller for TLS termination (NGINX, Traefik)
+- Scale server and worker nodes independently
+- Restrict downstream service access to Grapthway pods only
+- Mount `/data` for ledger persistence
+- Store private keys in Kubernetes Secrets or Vault
 
 ---
 
 ## 📚 Documentation
 
-### Official Resources
-
-- 📄 [White Paper](white_paper_end.html) - Protocol vision and technical architecture
-- 📖 [Engineering Manual](engineering_manual.html) - Complete technical reference
-- 🔧 [API Reference](engineering_manual.html) - Comprehensive API docs
+- 📄 [White Paper (EN)](white_paper_en.html) — Protocol vision and technical architecture
+- 📄 [White Paper (ID)](white_paper_id.html) — Kertas putih teknis protokol
+- 📖 [Engineering Manual](engineering_manual_new.html) — Complete technical reference
+- 📦 [Go SDK Docs](sdk/golang/readme.md)
+- 📦 [JavaScript SDK Docs](sdk/javascript/readme.md)
 
 ### Community
 
-- 💬 [Whatsapp](https://chat.whatsapp.com/JeSmPrptaJY4IhZ7E3p1E1) - Updates and announcements
-- 🐛 [GitHub Issues](https://github.com/Grapthway/Grapthway-Protocol/issues) - Bug reports
-- 💡 [Discussions](https://github.com/Grapthway/Grapthway-Protocol/discussions) - Feature requests
-
----
-
-## 🤝 Contributing
-
-We welcome contributions from the community!
-
-### Ways to Contribute
-
-- 🐛 Report bugs and issues
-- 💡 Propose new features
-- 📖 Improve documentation
-- 🔧 Submit pull requests
-- 🧪 Test and provide feedback
-
-### Development Setup
-
-```bash
-# Clone repository
-git clone https://github.com/Grapthway/Grapthway-Protocol.git
-cd Grapthway-Protocol
-
-# Install dependencies
-go mod download
-
-# Build binary
-go build -o grapthway ./cmd/grapthway
-```
-
----
-
-## 🆚 Comparison
-
-| Feature | Grapthway | AWS/GCP | Ethereum | Solana |
-|---------|-----------|---------|----------|--------|
-| **Architecture** | Hybrid L1 + Off-Chain | Centralized | Monolithic Blockchain | Monolithic Blockchain |
-| **TPS** | 500+ (2 vCPU) | Unlimited | ~15 | ~65,000 theoretical |
-| **Finality** | 2.5 seconds | Instant | ~13 minutes | ~400ms |
-| **Developer Experience** | Any language/stack | Excellent | Poor (Solidity only) | Poor (Rust only) |
-| **Smart Contracts** | Off-chain Pipelines | N/A | On-chain (EVM) | On-chain (BPF) |
-| **Cost Model** | Predictable (fixed GCU) | Variable | Volatile (gas market) | Volatile (priority fees) |
-| **Sovereignty** | High (Protocol Owned) | Low (Platform Owned) | High (Protocol Owned) | High (Protocol Owned) |
-| **Censorship Resistance** | High (P2P) | Low (Central Control) | High (Decentralized) | Medium (Validator Concentration) |
-| **Native Tokens** | Built-in | N/A | Smart contract required | Smart contract required |
+- 💬 [WhatsApp](https://chat.whatsapp.com/JeSmPrptaJY4IhZ7E3p1E1)
+- 🐛 [GitHub Issues](https://github.com/Grapthway/Grapthway-Protocol/issues)
+- 💡 [Discussions](https://github.com/Grapthway/Grapthway-Protocol/discussions)
 
 ---
 
 ## 📄 License
 
-Grapthway is available under a custom software license.  
-Please read the full agreement: [LICENSE.md](LICENSE.md)
-
----
-
-## 🙏 Acknowledgments
-
-Built with ❤️ by the Grapthway team.
-
-**Special Thanks:**
-- **libp2p** and **IPFS** communities for decentralized networking foundations
-- Early adopters and beta testers who helped battle-test the protocol
-- The GraphQL and REST communities for continuous inspiration
-- Contributors and open source maintainers worldwide
+Grapthway is available under a custom software license. Read the full agreement: [LICENSE.md](LICENSE.md)
 
 ---
 
 <div align="center">
 
 **Transform your microservices into sovereign applications**
-
-[🚀 Get Started](#-quick-start) • [📖 Read White Paper](whitepaper.md) • [💬 Join Whatsapp](https://chat.whatsapp.com/JeSmPrptaJY4IhZ7E3p1E1)
-
----
 
 *Web2 Performance. Web3 Sovereignty. No Compromise.*
 

@@ -77,6 +77,7 @@ const (
 	MempoolSyncProtocolID       protocol.ID = "/grapthway/mempool-sync/1.0.0"
 	MissingTxsRequestProtocolID protocol.ID = "/grapthway/missing-txs-req/1.0.0"
 	KnownTxsProtocolID          protocol.ID = "/grapthway/known-txs/1.0.0"
+	PushTxsProtocolID           protocol.ID = "/grapthway/push-txs/1.0.0"
 
 	peerLowWaterMark   = 2
 	peerHighWaterMark  = 80
@@ -286,6 +287,7 @@ func NewNode(ctx context.Context, bootstrapPeers []string, privKey libp2p_crypto
 	h.SetStreamHandler(MempoolSyncProtocolID, node.handleMempoolSyncStream)
 	h.SetStreamHandler(MissingTxsRequestProtocolID, node.handleMissingTxsRequestStream)
 	h.SetStreamHandler(KnownTxsProtocolID, node.handleKnownTxsRequestStream)
+	h.SetStreamHandler(PushTxsProtocolID, node.handlePushTxsStream)
 
 	if role != "worker" {
 		h.SetStreamHandler(PreBlockAckProtocolID, node.handlePreBlockAckStream)
@@ -306,6 +308,30 @@ func NewNode(ctx context.Context, bootstrapPeers []string, privKey libp2p_crypto
 	}
 
 	return node, nil
+}
+
+func (n *Node) handlePushTxsStream(s network.Stream) {
+	defer s.Close()
+	data, err := io.ReadAll(s)
+	if err != nil || len(data) == 0 {
+		s.Reset()
+		return
+	}
+	n.stakingProvider.HandleTransactionGossip(data)
+}
+
+func (n *Node) PushTransactionsToPeer(ctx context.Context, peerID peer.ID, data []byte) error {
+	s, err := n.Host.NewStream(ctx, peerID, PushTxsProtocolID)
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	s.SetDeadline(time.Now().Add(2 * time.Second))
+	_, err = s.Write(data)
+	if err != nil {
+		s.Reset()
+	}
+	return err
 }
 
 // handlePreBlockAckStream handles incoming signed acknowledgements for a pre-block proposal.
@@ -662,7 +688,14 @@ func (n *Node) SynchronizeMempool(ctx context.Context, knownTxIDs map[string]str
 		return nil, nil
 	}
 
-	var wg sync.WaitGroup
+	numWorkers := runtime.GOMAXPROCS(0) * 16
+	if numWorkers == 0 {
+		numWorkers = 8
+	}
+	if numWorkers > len(peers) {
+		numWorkers = len(peers)
+	}
+
 	resultsChan := make(chan []*pb.Transaction, len(peers))
 	knownMap := make(map[string]bool, len(knownTxIDs))
 	for id := range knownTxIDs {
@@ -674,39 +707,46 @@ func (n *Node) SynchronizeMempool(ctx context.Context, knownTxIDs map[string]str
 		return nil, err
 	}
 
+	peerChan := make(chan peer.ID, len(peers))
 	for _, p := range peers {
+		peerChan <- p
+	}
+	close(peerChan)
+
+	var wg sync.WaitGroup
+	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
-		go func(peerID peer.ID) {
+		go func() {
 			defer wg.Done()
-			s, err := n.Host.NewStream(ctx, peerID, MempoolSyncProtocolID)
-			if err != nil {
-				return
+			for peerID := range peerChan {
+				s, err := n.Host.NewStream(ctx, peerID, MempoolSyncProtocolID)
+				if err != nil {
+					continue
+				}
+				func() {
+					defer s.Close()
+					s.SetDeadline(time.Now().Add(5 * time.Second))
+					if _, err := s.Write(reqData); err != nil {
+						s.Reset()
+						return
+					}
+					s.CloseWrite()
+					respData, err := io.ReadAll(s)
+					if err != nil || len(respData) == 0 {
+						s.Reset()
+						return
+					}
+					var pbResp pb.MempoolSyncResponse
+					if err := proto.Unmarshal(respData, &pbResp); err != nil {
+						s.Reset()
+						return
+					}
+					if len(pbResp.MissingTxs) > 0 {
+						resultsChan <- pbResp.MissingTxs
+					}
+				}()
 			}
-			defer s.Close()
-			s.SetDeadline(time.Now().Add(5 * time.Second))
-
-			if _, err := s.Write(reqData); err != nil {
-				s.Reset()
-				return
-			}
-			s.CloseWrite()
-
-			respData, err := io.ReadAll(s)
-			if err != nil || len(respData) == 0 {
-				s.Reset()
-				return
-			}
-
-			var pbResp pb.MempoolSyncResponse
-			if err := proto.Unmarshal(respData, &pbResp); err != nil {
-				s.Reset()
-				return
-			}
-
-			if len(pbResp.MissingTxs) > 0 {
-				resultsChan <- pbResp.MissingTxs
-			}
-		}(p)
+		}()
 	}
 
 	wg.Wait()
@@ -714,7 +754,6 @@ func (n *Node) SynchronizeMempool(ctx context.Context, knownTxIDs map[string]str
 
 	var newTxs []types.Transaction
 	seenTxIDs := make(map[string]struct{})
-
 	for txs := range resultsChan {
 		for _, tx := range txs {
 			if _, seen := seenTxIDs[tx.Id]; !seen {
@@ -723,7 +762,6 @@ func (n *Node) SynchronizeMempool(ctx context.Context, knownTxIDs map[string]str
 			}
 		}
 	}
-
 	return newTxs, nil
 }
 
@@ -950,24 +988,49 @@ func (n *Node) RequestMissingTx(ctx context.Context, address string, nonce uint6
 		return nil, errors.New("no connected peers to ask")
 	}
 
+	numWorkers := runtime.GOMAXPROCS(0) * 16
+	if numWorkers == 0 {
+		numWorkers = 8
+	}
+	if numWorkers > len(peers) {
+		numWorkers = len(peers)
+	}
+
 	resultChan := make(chan *types.Transaction, 1)
 	queryCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	var wg sync.WaitGroup
+	peerChan := make(chan peer.ID, len(peers))
 	for _, p := range peers {
+		peerChan <- p
+	}
+	close(peerChan)
+
+	var wg sync.WaitGroup
+	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
-		go func(peerID peer.ID) {
+		go func() {
 			defer wg.Done()
-			tx, err := n.requestTxFromPeer(queryCtx, peerID, req)
-			if err == nil && tx != nil {
+			for peerID := range peerChan {
+				// Stop pulling from the channel as soon as we have a result
+				// or the caller context is cancelled.
 				select {
-				case resultChan <- tx:
-					cancel()
 				case <-queryCtx.Done():
+					return
+				default:
+				}
+
+				tx, err := n.requestTxFromPeer(queryCtx, peerID, req)
+				if err == nil && tx != nil {
+					select {
+					case resultChan <- tx:
+						cancel() // signal all other workers to stop
+					case <-queryCtx.Done():
+					}
+					return
 				}
 			}
-		}(p)
+		}()
 	}
 
 	go func() {
@@ -1058,32 +1121,51 @@ func peerScoreThresholds() *pubsub.PeerScoreThresholds {
 
 func (n *Node) RequestChainTipQuorum(ctx context.Context, leaderHash string, leaderHeight uint64) (majorityHash string, majorityHeight uint64, votesForMajority int, totalVotes int, err error) {
 	peers := n.GetPeerList()
+
+	numWorkers := runtime.GOMAXPROCS(0) * 16
+	if numWorkers == 0 {
+		numWorkers = 8
+	}
+	if numWorkers > len(peers) {
+		numWorkers = len(peers)
+	}
+
 	responses := make(chan *pb.ChainTipQuorumCheck, len(peers))
-	var wg sync.WaitGroup
 
+	peerChan := make(chan peer.ID, len(peers))
 	for _, p := range peers {
-		wg.Add(1)
-		go func(peerID peer.ID) {
-			defer wg.Done()
-			s, err := n.Host.NewStream(ctx, peerID, ChainTipQuorumProtocolID)
-			if err != nil {
-				return
-			}
-			defer s.Close()
-			s.SetDeadline(time.Now().Add(3 * time.Second))
+		peerChan <- p
+	}
+	close(peerChan)
 
-			data, err := io.ReadAll(s)
-			if err != nil {
-				s.Reset()
-				return
+	var wg sync.WaitGroup
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for peerID := range peerChan {
+				s, err := n.Host.NewStream(ctx, peerID, ChainTipQuorumProtocolID)
+				if err != nil {
+					continue
+				}
+				func() {
+					defer s.Close()
+					s.SetDeadline(time.Now().Add(3 * time.Second))
+
+					data, err := io.ReadAll(s)
+					if err != nil {
+						s.Reset()
+						return
+					}
+					var resp pb.ChainTipQuorumCheck
+					if err := proto.Unmarshal(data, &resp); err != nil {
+						s.Reset()
+						return
+					}
+					responses <- &resp
+				}()
 			}
-			var resp pb.ChainTipQuorumCheck
-			if err := proto.Unmarshal(data, &resp); err != nil {
-				s.Reset()
-				return
-			}
-			responses <- &resp
-		}(p)
+		}()
 	}
 
 	wg.Wait()

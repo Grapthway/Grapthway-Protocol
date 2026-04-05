@@ -1,11 +1,11 @@
 package handler
 
 import (
-	"fmt"
 	"grapthway/pkg/dependency"
 	"grapthway/pkg/ledger/types"
 	"grapthway/pkg/logging"
 	"grapthway/pkg/model"
+	"grapthway/pkg/util"
 	"net/http"
 	"time"
 
@@ -68,6 +68,7 @@ func GetStakingStatusHandler(deps *dependency.Dependencies) http.HandlerFunc {
 
 func StakeDepositHandler(deps *dependency.Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		now := time.Now()
 		ownerAddress, ok := r.Context().Value("authenticatedUser").(string)
 		if !ok || ownerAddress == "" {
 			http.Error(w, "Authenticated user not found in context", http.StatusInternalServerError)
@@ -86,12 +87,12 @@ func StakeDepositHandler(deps *dependency.Dependencies) http.HandlerFunc {
 		amountMicro := uint64(payload.Amount * model.GCU_MICRO_UNIT)
 
 		tx := types.Transaction{
-			ID:        fmt.Sprintf("tx-%d-stake-deposit", time.Now().UnixNano()),
+			ID:        util.GenerateTxID("tx-stake-deposit-", ownerAddress, "", amountMicro, now.UnixNano()),
 			Type:      model.StakeDepositTransaction,
 			From:      ownerAddress,
 			Amount:    amountMicro,
-			Timestamp: time.Now(),
-			CreatedAt: time.Now(),
+			Timestamp: now,
+			CreatedAt: now,
 			Nonce:     payload.Nonce,
 		}
 
@@ -102,7 +103,7 @@ func StakeDepositHandler(deps *dependency.Dependencies) http.HandlerFunc {
 		}
 
 		deps.Logger.Log(logging.LogEntry{
-			Timestamp: time.Now(), LogType: logging.LedgerLog, Activity: "Stake Deposit",
+			Timestamp: now, LogType: logging.LedgerLog, Activity: "Stake Deposit",
 			User: ownerAddress,
 			TransactionInfo: &logging.TransactionInfo{
 				TransactionID: processedTx.ID, Type: string(processedTx.Type), From: processedTx.From, To: processedTx.To,
@@ -117,6 +118,7 @@ func StakeDepositHandler(deps *dependency.Dependencies) http.HandlerFunc {
 
 func StakeWithdrawalHandler(deps *dependency.Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		now := time.Now()
 		ownerAddress, ok := r.Context().Value("authenticatedUser").(string)
 		if !ok || ownerAddress == "" {
 			http.Error(w, "Authenticated user not found in context", http.StatusInternalServerError)
@@ -135,12 +137,12 @@ func StakeWithdrawalHandler(deps *dependency.Dependencies) http.HandlerFunc {
 		amountMicro := uint64(payload.Amount * model.GCU_MICRO_UNIT)
 
 		tx := types.Transaction{
-			ID:        fmt.Sprintf("tx-%d-stake-withdraw", time.Now().UnixNano()),
+			ID:        util.GenerateTxID("tx-stake-withdraw-", ownerAddress, "", amountMicro, now.UnixNano()),
 			Type:      model.StakeWithdrawalTransaction,
 			From:      ownerAddress,
 			Amount:    amountMicro,
-			Timestamp: time.Now(),
-			CreatedAt: time.Now(),
+			Timestamp: now,
+			CreatedAt: now,
 			Nonce:     payload.Nonce,
 		}
 
@@ -151,7 +153,7 @@ func StakeWithdrawalHandler(deps *dependency.Dependencies) http.HandlerFunc {
 		}
 
 		deps.Logger.Log(logging.LogEntry{
-			Timestamp: time.Now(), LogType: logging.LedgerLog, Activity: "Stake Withdrawal",
+			Timestamp: now, LogType: logging.LedgerLog, Activity: "Stake Withdrawal",
 			User: ownerAddress,
 			TransactionInfo: &logging.TransactionInfo{
 				TransactionID: processedTx.ID, Type: string(processedTx.Type), From: processedTx.From, To: processedTx.To,
@@ -166,6 +168,7 @@ func StakeWithdrawalHandler(deps *dependency.Dependencies) http.HandlerFunc {
 
 func StakeAssignHandler(deps *dependency.Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		now := time.Now()
 		ownerAddress, ok := r.Context().Value("authenticatedUser").(string)
 		if !ok || ownerAddress == "" {
 			http.Error(w, "Authenticated user not found", http.StatusInternalServerError)
@@ -185,13 +188,13 @@ func StakeAssignHandler(deps *dependency.Dependencies) http.HandlerFunc {
 		amountMicro := uint64(payload.Amount * model.GCU_MICRO_UNIT)
 
 		tx := types.Transaction{
-			ID:           fmt.Sprintf("tx-%d-stake-assign", time.Now().UnixNano()),
+			ID:           util.GenerateTxID("tx-stake-assign-", ownerAddress, payload.NodePeerID, amountMicro, now.UnixNano()),
 			Type:         model.StakeAssignTransaction,
 			From:         ownerAddress,
 			Amount:       amountMicro,
 			TargetNodeID: payload.NodePeerID,
-			Timestamp:    time.Now(),
-			CreatedAt:    time.Now(),
+			Timestamp:    now,
+			CreatedAt:    now,
 			Nonce:        payload.Nonce,
 		}
 
@@ -202,7 +205,7 @@ func StakeAssignHandler(deps *dependency.Dependencies) http.HandlerFunc {
 		}
 
 		deps.Logger.Log(logging.LogEntry{
-			Timestamp: time.Now(), LogType: logging.LedgerLog, Activity: "Stake Assign",
+			Timestamp: now, LogType: logging.LedgerLog, Activity: "Stake Assign",
 			User: ownerAddress,
 			TransactionInfo: &logging.TransactionInfo{
 				TransactionID: processedTx.ID, Type: string(processedTx.Type), From: processedTx.From, To: processedTx.TargetNodeID,
@@ -217,6 +220,7 @@ func StakeAssignHandler(deps *dependency.Dependencies) http.HandlerFunc {
 
 func StakeUnassignHandler(deps *dependency.Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		now := time.Now()
 		ownerAddress, ok := r.Context().Value("authenticatedUser").(string)
 		if !ok || ownerAddress == "" {
 			http.Error(w, "Authenticated user not found", http.StatusInternalServerError)
@@ -244,12 +248,12 @@ func StakeUnassignHandler(deps *dependency.Dependencies) http.HandlerFunc {
 		}
 
 		tx := types.Transaction{
-			ID:           fmt.Sprintf("tx-%d-stake-unassign", time.Now().UnixNano()),
+			ID:           util.GenerateTxID("tx-stake-unassign-", ownerAddress, payload.NodePeerID, 0, now.UnixNano()),
 			Type:         model.StakeUnassignTransaction,
 			From:         ownerAddress,
 			TargetNodeID: payload.NodePeerID,
-			Timestamp:    time.Now(),
-			CreatedAt:    time.Now(),
+			Timestamp:    now,
+			CreatedAt:    now,
 			Nonce:        payload.Nonce,
 		}
 
@@ -260,7 +264,7 @@ func StakeUnassignHandler(deps *dependency.Dependencies) http.HandlerFunc {
 		}
 
 		deps.Logger.Log(logging.LogEntry{
-			Timestamp: time.Now(), LogType: logging.LedgerLog, Activity: "Stake Unassign",
+			Timestamp: now, LogType: logging.LedgerLog, Activity: "Stake Unassign",
 			User: ownerAddress,
 			TransactionInfo: &logging.TransactionInfo{
 				TransactionID: processedTx.ID, Type: string(processedTx.Type), From: processedTx.From, To: processedTx.TargetNodeID,

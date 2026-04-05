@@ -63,6 +63,10 @@ func createTransport() *http.Transport {
 		TLSHandshakeTimeout:   10 * time.Second, // TLS handshake timeout
 		ExpectContinueTimeout: 1 * time.Second,  // Expect: 100-continue timeout
 
+		// ❌ NO ResponseHeaderTimeout here!
+		// When using Client.Timeout, ResponseHeaderTimeout overrides it and causes issues
+		// Only set ResponseHeaderTimeout in GetTransportWithTimeout for reverse proxies
+
 		// Performance
 		DisableKeepAlives:  false, // Enable connection reuse
 		DisableCompression: false, // Enable gzip

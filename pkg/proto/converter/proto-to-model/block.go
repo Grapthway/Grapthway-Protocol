@@ -90,6 +90,7 @@ func ProtoToModelBlock(p *pb.Block) *types.Block {
 	}
 
 	return &types.Block{
+		ProposalID:     p.ProposalId,
 		ProposerID:     p.ProposerId,
 		Transactions:   txs,
 		Timestamp:      p.Timestamp.AsTime(),
